@@ -22,7 +22,8 @@
     <nav class="sidebar-nav">
       <div class="nav-section-label">Main</div>
       <a class="nav-item active" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
-      <a class="nav-item" href="analytics.html"><span class="nav-icon">📊</span> Analytics</a>
+      <a class="nav-item" href="attendance.html"><span class="nav-icon">🗓</span> Attendance</a>
+      <a class="nav-item" href="overtime.html"><span class="nav-icon">⏰</span> Overtime</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
@@ -60,18 +61,11 @@
     <!-- Page Content -->
     <div class="page-content">
 
-      <!-- OT Banner -->
-      <div class="ot-banner hidden" id="ot-banner">
-        <div>
-          <div class="ot-banner-label">🔴 Overtime In Progress</div>
-          <div style="font-size:.82rem;opacity:.85;margin-top:.2rem">
-            Don't forget to press <strong>Time Out</strong> when you're done!
-          </div>
-        </div>
-        <div>
-          <div class="ot-banner-label" style="text-align:right">OT Duration</div>
-          <div class="ot-banner-timer" id="ot-timer">00:00:00</div>
-        </div>
+      <!-- User greeting card -->
+      <div class="user-greeting-card">
+        <div class="user-greeting-hi" id="greeting-hi">Hi,</div>
+        <div class="user-greeting-name" id="greeting-name">—</div>
+        <div class="user-greeting-dept" id="greeting-dept">—</div>
       </div>
 
       <!-- Quick Stats -->
@@ -103,9 +97,7 @@
         <div class="table-toolbar">
           <div>
             <div class="table-toolbar-title">Attendance Records</div>
-            <div class="text-sm" style="color:var(--text-light);margin-top:.15rem">
-              Daily time tracking • Philippines Standard Time
-            </div>
+            <div class="toolbar-pst">Daily time tracking</div>
           </div>
           <button class="btn btn-primary" id="btn-add-row">＋ Add Record</button>
         </div>
@@ -119,11 +111,10 @@
                 <th>Work Hours</th>
                 <th>Overtime</th>
                 <th>OT Use</th>
-                <th>More</th>
               </tr>
             </thead>
             <tbody id="records-tbody">
-              <tr><td colspan="6">
+              <tr><td colspan="5">
                 <div class="empty-state">
                   <div class="spinner" style="margin:0 auto"></div>
                 </div>
@@ -149,6 +140,9 @@
           <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
             <span style="width:12px;height:12px;background:#FFF5F5;border-radius:3px;display:inline-block;border:1px solid #FECACA"></span> Absent
           </span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
+            <span style="width:12px;height:12px;background:#EDE9FE;border-radius:3px;display:inline-block;border:1px solid #C4B5FD"></span> Holiday
+          </span>
         </div>
       </div>
 
@@ -156,21 +150,63 @@
   </main>
 </div>
 
-<!-- ══ View Modal ══ -->
-<div class="modal-overlay hidden" id="view-modal">
-  <div class="modal">
+<!-- ══ New User Onboarding Modal ══ -->
+<div class="modal-overlay hidden" id="onboarding-modal">
+  <div class="modal" style="max-width:440px">
     <div class="modal-header">
-      <span class="modal-title">Record Details</span>
-      <button class="modal-close" data-close-modal="view-modal">✕</button>
+      <span class="modal-title">👋 Welcome! Set Your Work Schedule</span>
     </div>
-    <div class="modal-body" id="view-modal-body"></div>
+    <div class="modal-body">
+      <p style="font-size:.84rem;color:var(--text-light);margin-bottom:1.25rem">
+        Tell us your working hours so we can track your overtime automatically. You can change this later in Settings.
+      </p>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Work Start Time</label>
+          <input class="form-control" type="time" id="ob-work-start" value="08:00"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Work End Time</label>
+          <input class="form-control" type="time" id="ob-work-end" value="17:00"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Grace Period (minutes before OT starts)</label>
+        <input class="form-control" type="number" id="ob-grace" min="0" max="60" value="5" style="max-width:120px"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Working Days</label>
+        <div class="days-grid">
+          <input class="day-check" type="checkbox" id="ob-day-0" value="0"/><label class="day-label" for="ob-day-0">Su</label>
+          <input class="day-check" type="checkbox" id="ob-day-1" value="1" checked/><label class="day-label" for="ob-day-1">Mo</label>
+          <input class="day-check" type="checkbox" id="ob-day-2" value="2" checked/><label class="day-label" for="ob-day-2">Tu</label>
+          <input class="day-check" type="checkbox" id="ob-day-3" value="3" checked/><label class="day-label" for="ob-day-3">We</label>
+          <input class="day-check" type="checkbox" id="ob-day-4" value="4" checked/><label class="day-label" for="ob-day-4">Th</label>
+          <input class="day-check" type="checkbox" id="ob-day-5" value="5" checked/><label class="day-label" for="ob-day-5">Fr</label>
+          <input class="day-check" type="checkbox" id="ob-day-6" value="6"/><label class="day-label" for="ob-day-6">Sa</label>
+        </div>
+      </div>
+    </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" data-close-modal="view-modal">Close</button>
+      <button class="btn btn-ghost" id="btn-ob-later">Fill-up Later</button>
+      <button class="btn btn-primary" id="btn-ob-save">Save Schedule</button>
     </div>
   </div>
 </div>
 
-<!-- ══ Add / Edit Modal ══ -->
+<!-- ══ Unified Record Modal ══ -->
+<div class="modal-overlay hidden" id="record-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="record-modal-title">Record Details</span>
+      <button class="modal-close" id="record-modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="record-modal-body"></div>
+    <div class="modal-footer" id="record-modal-footer"></div>
+  </div>
+</div>
+
+<!-- ══ Add Record Modal ══ -->
 <div class="modal-overlay hidden" id="add-modal">
   <div class="modal">
     <div class="modal-header">
@@ -184,14 +220,25 @@
         <input class="form-control" type="date" id="edit-date"/>
       </div>
 
-      <!-- Work Hours (auto from settings, editable via pencil) -->
+      <!-- Status Dropdown -->
       <div class="form-group">
-        <div class="form-label-row">
-          <label class="form-label">Work Hours</label>
-          <button type="button" class="work-edit-btn" onclick="openWorkHoursEditor()" title="Customize work hours for this date only">✏️</button>
-          <span style="font-size:.7rem;color:var(--text-light)">(from settings, click ✏️ to override)</span>
+        <label class="form-label">Status</label>
+        <select class="form-control" id="edit-status" onchange="handleStatusChange()">
+          <option value="present">Present</option>
+          <option value="absent">Absent</option>
+          <option value="holiday">Holiday</option>
+        </select>
+        <div class="form-hint">Choose Absent or Holiday to skip time out entry.</div>
+      </div>
+
+      <!-- Work Hours (auto from settings, editable via pencil) -->
+      <div class="form-group" id="work-hours-group">
+        <div class="form-label-row" style="margin-bottom:.5rem">
+          <label class="form-label" style="margin-bottom:0">Work Hours</label>
+          <button type="button" class="work-edit-btn-visible" onclick="openWorkHoursEditor()" title="Customize work hours for this date only">
+            ✏️ Override
+          </button>
         </div>
-        <!-- Hidden editor — shown when pencil is clicked -->
         <div id="work-hours-editor" class="hidden" style="background:var(--bg);border-radius:8px;padding:.75rem;margin-bottom:.5rem;border:1px solid var(--border)">
           <div style="font-size:.75rem;font-weight:600;color:var(--text-light);margin-bottom:.5rem">Custom hours for this date only</div>
           <div class="form-row">
@@ -207,14 +254,14 @@
         </div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" id="timeout-group">
         <label class="form-label">Time Out</label>
         <input class="form-control" type="text" id="edit-timeout" placeholder="e.g. 5:30 PM"/>
         <div class="form-hint">Format: 5:30 PM — Overtime is calculated automatically</div>
       </div>
 
       <!-- Auto-calculated display -->
-      <div class="form-row" style="margin-bottom:1rem">
+      <div class="form-row" style="margin-bottom:1rem" id="calc-display-group">
         <div style="background:var(--bg);border-radius:7px;padding:.55rem .75rem;border:1px solid var(--border)">
           <div style="font-size:.68rem;color:var(--text-light);font-weight:600;margin-bottom:.15rem">WORK HOURS</div>
           <div style="font-weight:700;color:var(--text)" id="edit-work-display">—</div>
@@ -233,23 +280,6 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close-modal="add-modal">Cancel</button>
       <button class="btn btn-primary" id="btn-save-record">Save Record</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ Delete Modal ══ -->
-<div class="modal-overlay hidden" id="delete-modal">
-  <div class="modal" style="max-width:380px">
-    <div class="modal-header">
-      <span class="modal-title">Delete Record</span>
-      <button class="modal-close" data-close-modal="delete-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:.88rem">Are you sure you want to delete the record for <strong id="delete-info"></strong>? This cannot be undone.</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-close-modal="delete-modal">Cancel</button>
-      <button class="btn btn-danger" id="btn-confirm-delete">Delete</button>
     </div>
   </div>
 </div>
