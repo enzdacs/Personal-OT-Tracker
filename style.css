@@ -84,6 +84,7 @@ body {
 .btn-ghost     { background: transparent; color: var(--text-light); border: 1px solid var(--border); }
 .btn-ghost:hover { background: var(--bg); color: var(--text); }
 .btn-sm { padding: .3rem .65rem; font-size: .75rem; border-radius: 5px; }
+.btn-fixed-w { min-width: 58px; justify-content: center; }
 .btn-icon { padding: .35rem .45rem; }
 .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
@@ -110,6 +111,7 @@ body {
 .badge-warning  { background: var(--warning-light); color: var(--warning); }
 .badge-primary  { background: var(--primary-light); color: var(--primary); }
 .badge-gray     { background: #F1F5F9; color: var(--text-light); }
+.badge-holiday  { background: #EDE9FE; color: #7C3AED; }
 
 #app-shell {
   display: flex;
@@ -224,9 +226,10 @@ body {
 .table-card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; }
 .table-toolbar {
   padding: 1rem 1.2rem; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: nowrap;
 }
 .table-toolbar-title { font-size: .88rem; font-weight: 700; }
+.toolbar-pst { font-size: .78rem; color: var(--text-light); margin-top: .15rem; }
 
 /* Scrollable table — horizontal + vertical inside table only */
 .table-wrap {
@@ -238,21 +241,22 @@ body {
 .table-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
 .table-wrap::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 99px; }
 
-table { width: 100%; border-collapse: collapse; min-width: 680px; }
+table { width: 100%; border-collapse: collapse; min-width: 520px; }
 thead { position: sticky; top: 0; z-index: 10; background: var(--bg); }
 th {
-  padding: .6rem 1rem; text-align: left; font-size: .72rem; font-weight: 600;
+  padding: .6rem 1rem; text-align: center; font-size: .72rem; font-weight: 600;
   color: var(--text-light); text-transform: uppercase; letter-spacing: .05em;
   white-space: nowrap; border-bottom: 1px solid var(--border);
 }
-td { padding: .65rem 1rem; border-bottom: 1px solid var(--border); font-size: .82rem; vertical-align: middle; white-space: nowrap; }
+td { padding: .65rem 1rem; border-bottom: 1px solid var(--border); font-size: .82rem; vertical-align: middle; white-space: nowrap; text-align: center; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: rgba(0,0,0,.018); }
 
-.row-today  { background: var(--primary-light) !important; }
-.row-ot     { background: var(--accent-light)  !important; }
-.row-used   { background: var(--success-light) !important; }
-.row-absent { background: #FFF5F5             !important; }
+.row-today   { background: var(--primary-light) !important; }
+.row-ot      { background: var(--accent-light)  !important; }
+.row-used    { background: var(--success-light) !important; }
+.row-absent  { background: #FFF5F5             !important; }
+.row-holiday { background: #EDE9FE             !important; }
 
 /* Pagination */
 .pagination-bar {
@@ -261,8 +265,28 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
 }
 .pagination-info { font-size: .74rem; color: var(--text-light); }
 .pagination-controls { display: flex; align-items: center; gap: .35rem; }
+.pag-short { display: none; }
 
-/* Work Hours in table */
+/* Work Hours override button — visible styled */
+.work-edit-btn-visible {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .25rem .65rem;
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid #BFDBFE;
+  border-radius: 6px;
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, border-color .15s;
+  margin-left: .5rem;
+}
+.work-edit-btn-visible:hover { background: #DBEAFE; border-color: var(--primary); }
+
+/* Legacy small pencil (kept for edit modal inline use) */
 .work-hrs-range { font-size: .72rem; color: var(--text-light); }
 .work-edit-btn {
   background: none; border: none; cursor: pointer; font-size: .8rem;
@@ -380,7 +404,14 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
 .period-tab { padding: .35rem .85rem; border-radius: 99px; border: 1px solid var(--border); font-size: .78rem; font-weight: 500; cursor: pointer; background: none; color: var(--text-light); transition: all .15s; font-family: inherit; }
 .period-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .chart-container { position: relative; height: 240px; width: 100%; }
-.analytics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+/* Ensure chart cards match full width and don't overflow */
+.analytics-grid .card { min-width: 0; width: 100%; }
 
 .settings-layout { display: grid; grid-template-columns: 200px 1fr; gap: 1rem; }
 .settings-nav { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); padding: .5rem; height: fit-content; }
@@ -408,46 +439,37 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
 .sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 99; opacity: 0; pointer-events: none; transition: opacity .25s; }
 .sidebar-backdrop.open { opacity: 1; pointer-events: all; }
 
+/* ── User Greeting Card ── */
+.user-greeting-card {
+  background: linear-gradient(135deg, var(--secondary) 0%, #0F172A 100%);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.4rem;
+  margin-bottom: 1.25rem;
+  color: #fff;
+  box-shadow: var(--shadow-md);
+}
+.user-greeting-hi {
+  font-size: .8rem;
+  color: #94A3B8;
+  font-weight: 400;
+  margin-bottom: .1rem;
+}
+.user-greeting-name {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #F1F5F9;
+  line-height: 1.2;
+}
+.user-greeting-dept {
+  font-size: .8rem;
+  color: #94A3B8;
+  margin-top: .2rem;
+  font-weight: 400;
+}
+
 /* ── Row clickable ── */
 .row-clickable { cursor: pointer; }
 .row-clickable:hover { filter: brightness(.97); }
-
-/* ── Dropdown (More menu) ── */
-.more-cell { position: relative; }
-.dropdown-wrap { position: relative; display: inline-block; }
-.dropdown-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow-md);
-  z-index: 300;
-  min-width: 140px;
-  overflow: hidden;
-  animation: dropIn .15s ease;
-}
-@keyframes dropIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
-.dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  width: 100%;
-  padding: .55rem .9rem;
-  font-size: .8rem;
-  font-weight: 500;
-  font-family: inherit;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text);
-  text-align: left;
-  transition: background .12s;
-}
-.dropdown-item:hover { background: var(--bg); }
-.dropdown-item-danger { color: var(--danger); }
-.dropdown-item-danger:hover { background: var(--danger-light); }
 
 /* Page content reveal */
 .page-content-inner { animation: contentReveal .28s ease forwards; }
@@ -469,10 +491,17 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
   .table-wrap { max-height: 380px; }
 }
 
+@media (max-width: 485px) {
+  /* toolbar-pst now only says "Daily time tracking" — always visible, no PST to hide */
+}
+
 @media (max-width: 480px) {
   .stats-grid { grid-template-columns: 1fr 1fr; gap: .6rem; }
   .stat-value { font-size: 1.25rem; }
   .period-tabs { gap: .3rem; }
   .period-tab { padding: .3rem .65rem; font-size: .73rem; }
-  .live-clock-date { display: none; }
+  .live-clock-date { display: block; font-size: .6rem; }
+  /* Compact pagination at narrow widths */
+  .pag-full { display: none; }
+  .pag-short { display: inline !important; }
 }
