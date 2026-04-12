@@ -40,6 +40,7 @@
     .auth-panel.active { display: block; }
     .auth-label { display: block; font-size: .8rem; font-weight: 600; margin-bottom: .3rem; color: var(--text); }
     .auth-footer-note { text-align: center; font-size: .75rem; color: var(--text-light); margin-top: 1rem; }
+    .inline-error { font-size: .75rem; color: var(--danger); margin-top: -.4rem; margin-bottom: .5rem; font-weight: 500; }
   </style>
 </head>
 <body>
@@ -64,6 +65,7 @@
         <div class="auth-error hidden" id="error-login"></div>
         <label class="auth-label">Email</label>
         <input class="auth-input" id="login-email" type="email" placeholder="you@email.com" autocomplete="email"/>
+        <div class="inline-error" id="err-login-email" style="display:none"></div>
         <label class="auth-label">Password</label>
         <input class="auth-input" id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password"/>
         <button class="auth-btn" id="btn-login">Sign In</button>
@@ -77,10 +79,13 @@
         <input class="auth-input" id="signup-name" type="text" placeholder="Juan dela Cruz" autocomplete="name"/>
         <label class="auth-label">Email</label>
         <input class="auth-input" id="signup-email" type="email" placeholder="you@email.com" autocomplete="email"/>
+        <div class="inline-error" id="err-signup-email" style="display:none"></div>
         <label class="auth-label">Password</label>
         <input class="auth-input" id="signup-pass" type="password" placeholder="Min. 8 characters" autocomplete="new-password"/>
+        <div class="inline-error" id="err-pass1" style="display:none"></div>
         <label class="auth-label">Confirm Password</label>
         <input class="auth-input" id="signup-pass2" type="password" placeholder="Repeat password" autocomplete="new-password"/>
+        <div class="inline-error" id="err-pass2" style="display:none"></div>
         <button class="auth-btn" id="btn-signup">Create Account</button>
       </div>
 
