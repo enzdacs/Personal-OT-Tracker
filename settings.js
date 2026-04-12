@@ -52,6 +52,7 @@ function populateForm() {
   document.getElementById('s-work-end').value      = s.workEnd     || '17:00';
   document.getElementById('s-grace').value         = s.gracePeriod ?? 5;
   document.getElementById('s-full-name').value     = s.fullName    || '';
+  document.getElementById('s-username').value       = s.username    || '';
   document.getElementById('s-department').value    = s.department  || '';
 
   const workDays = s.workDays || [1,2,3,4,5];
@@ -106,8 +107,9 @@ async function saveSchedule() {
 }
 
 async function saveProfile() {
-  const name = document.getElementById('s-full-name').value.trim();
-  const dept = document.getElementById('s-department').value.trim();
+  const name     = document.getElementById('s-full-name').value.trim();
+  const username = document.getElementById('s-username').value.trim();
+  const dept     = document.getElementById('s-department').value.trim();
 
   if (!name) { showToast('Full name is required.', 'error'); return; }
 
@@ -117,7 +119,7 @@ async function saveProfile() {
   try {
     await db.collection('users').doc(currentUser.uid)
             .collection('config').doc('settings')
-            .set({ fullName: name, department: dept }, { merge: true });
+            .set({ fullName: name, username, department: dept }, { merge: true });
     clearSettingsCache();
     userSettings = await getUserSettings(currentUser.uid);
     updateSidebarUser();
