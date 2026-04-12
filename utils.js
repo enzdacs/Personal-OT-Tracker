@@ -142,21 +142,32 @@ async function getUserSettings(uid) {
   try {
     const doc = await db.collection('users').doc(uid).collection('config').doc('settings').get();
     if (doc.exists) {
-      _settings = doc.data();
+      const data = doc.data();
+      // Fill in any missing defaults so the app never gets null for critical fields
+      _settings = {
+        fullName:    data.fullName    || '',
+        username:    data.username    || '',
+        department:  data.department  || '',
+        workStart:   data.workStart   || '08:00',
+        workEnd:     data.workEnd     || '17:00',
+        workDays:    data.workDays    || [1, 2, 3, 4, 5],
+        gracePeriod: data.gracePeriod ?? 5,
+        isNewUser:   data.isNewUser   || false,
+      };
     } else {
       _settings = {
-        fullName: '', department: '',
+        fullName: '', username: '', department: '',
         workStart: '08:00', workEnd: '17:00',
         workDays: [1, 2, 3, 4, 5],
-        gracePeriod: 5,
+        gracePeriod: 5, isNewUser: true,
       };
     }
   } catch(e) {
     _settings = {
-      fullName: '', department: '',
+      fullName: '', username: '', department: '',
       workStart: '08:00', workEnd: '17:00',
       workDays: [1, 2, 3, 4, 5],
-      gracePeriod: 5,
+      gracePeriod: 5, isNewUser: false,
     };
   }
   return _settings;
