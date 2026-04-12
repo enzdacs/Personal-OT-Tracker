@@ -22,10 +22,15 @@ document.addEventListener('DOMContentLoaded', () => {
     loginPanel.classList.toggle('active',  which === 'login');
     signupPanel.classList.toggle('active', which === 'signup');
     clearErrors();
+    clearInlineErrors();
   }
 
   function clearErrors() {
     document.querySelectorAll('.auth-error').forEach(el => el.classList.add('hidden'));
+  }
+
+  function clearInlineErrors() {
+    document.querySelectorAll('.inline-error').forEach(el => { el.textContent = ''; el.style.display = 'none'; });
   }
 
   function showError(panel, msg) {
@@ -33,11 +38,78 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) { el.textContent = msg; el.classList.remove('hidden'); }
   }
 
-  // ── Login ────────────────────────────────
+  function showInlineError(id, msg) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  // ── Real-time inline validation ──────────────
+
+  // Signup: password match check live
+  const pass1El  = document.getElementById('signup-pass');
+  const pass2El  = document.getElementById('signup-pass2');
+  const emailEl  = document.getElementById('signup-email');
+
+  if (pass2El) {
+    pass2El.addEventListener('input', () => {
+      const p1 = pass1El ? pass1El.value : '';
+      const p2 = pass2El.value;
+      if (p2.length === 0) { showInlineError('err-pass2', ''); return; }
+      if (p1 !== p2) showInlineError('err-pass2', 'Passwords do not match.');
+      else showInlineError('err-pass2', '');
+    });
+  }
+
+  if (pass1El) {
+    pass1El.addEventListener('input', () => {
+      const p1 = pass1El.value;
+      const p2 = pass2El ? pass2El.value : '';
+      if (p1.length > 0 && p1.length < 8) showInlineError('err-pass1', 'Password must be at least 8 characters.');
+      else showInlineError('err-pass1', '');
+      // Re-check confirm if already typed
+      if (p2.length > 0) {
+        if (p1 !== p2) showInlineError('err-pass2', 'Passwords do not match.');
+        else showInlineError('err-pass2', '');
+      }
+    });
+  }
+
+  // Basic email format check on blur (signup)
+  if (emailEl) {
+    emailEl.addEventListener('blur', () => {
+      const val = emailEl.value.trim();
+      if (val.length === 0) { showInlineError('err-signup-email', ''); return; }
+      const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+      if (!valid) showInlineError('err-signup-email', 'Please enter a valid email address.');
+      else showInlineError('err-signup-email', '');
+    });
+    emailEl.addEventListener('input', () => {
+      // Clear email error while typing again
+      showInlineError('err-signup-email', '');
+    });
+  }
+
+  // Login email format check on blur
+  const loginEmailEl = document.getElementById('login-email');
+  if (loginEmailEl) {
+    loginEmailEl.addEventListener('blur', () => {
+      const val = loginEmailEl.value.trim();
+      if (val.length === 0) { showInlineError('err-login-email', ''); return; }
+      const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+      if (!valid) showInlineError('err-login-email', 'Please enter a valid email address.');
+      else showInlineError('err-login-email', '');
+    });
+    loginEmailEl.addEventListener('input', () => showInlineError('err-login-email', ''));
+  }
+
+  // ── Login ────────────────────────────────────
   document.getElementById('btn-login').addEventListener('click', async () => {
     const email = document.getElementById('login-email').value.trim();
     const pass  = document.getElementById('login-pass').value;
     clearErrors();
+    clearInlineErrors();
 
     if (!email || !pass) { showError('login', 'Please fill in all fields.'); return; }
 
@@ -50,26 +122,31 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       btn.disabled = false; btn.textContent = 'Sign In';
       const map = {
-        'auth/user-not-found':  'No account found with that email.',
-        'auth/wrong-password':  'Incorrect password.',
-        'auth/invalid-email':   'Invalid email address.',
-        'auth/too-many-requests': 'Too many attempts. Please try again later.',
+        'auth/user-not-found':    'No account found with that email.',
+        'auth/wrong-password':    'Incorrect password.',
+        'auth/invalid-email':     'Invalid email address.',
+        'auth/invalid-credential':'Incorrect email or password.',
+        'auth/too-many-requests': 'Too many failed attempts. Please try again later.',
       };
-      showError('login', map[e.code] || e.message);
+      showError('login', map[e.code] || 'Sign-in failed. Please check your email and password.');
     }
   });
 
-  // ── Sign Up ──────────────────────────────
+  // ── Sign Up ──────────────────────────────────
   document.getElementById('btn-signup').addEventListener('click', async () => {
     const name  = document.getElementById('signup-name').value.trim();
     const email = document.getElementById('signup-email').value.trim();
     const pass  = document.getElementById('signup-pass').value;
     const pass2 = document.getElementById('signup-pass2').value;
     clearErrors();
+    clearInlineErrors();
 
     if (!name || !email || !pass || !pass2) { showError('signup', 'Please fill in all fields.'); return; }
-    if (pass !== pass2) { showError('signup', 'Passwords do not match.'); return; }
-    if (pass.length < 8) { showError('signup', 'Password must be at least 8 characters.'); return; }
+
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!validEmail) { showInlineError('err-signup-email', 'Please enter a valid email address.'); return; }
+    if (pass.length < 8) { showInlineError('err-pass1', 'Password must be at least 8 characters.'); return; }
+    if (pass !== pass2) { showInlineError('err-pass2', 'Passwords do not match.'); return; }
 
     const btn = document.getElementById('btn-signup');
     btn.disabled = true; btn.textContent = 'Creating account…';
@@ -78,15 +155,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const cred = await auth.createUserWithEmailAndPassword(email, pass);
       const uid  = cred.user.uid;
 
-      // Save profile + default settings
+      // Save profile + minimal default settings (no workStart/workEnd set — user will configure)
       await db.collection('users').doc(uid).set({ email, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
       await db.collection('users').doc(uid).collection('config').doc('settings').set({
         fullName:    name,
+        username:    '',
         department:  '',
-        workStart:   '08:00',
-        workEnd:     '17:00',
+        workStart:   '',
+        workEnd:     '',
         workDays:    [1, 2, 3, 4, 5],
         gracePeriod: 5,
+        isNewUser:   true,
         createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -94,11 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       btn.disabled = false; btn.textContent = 'Create Account';
       const map = {
-        'auth/email-already-in-use': 'That email is already registered.',
-        'auth/invalid-email':        'Invalid email address.',
-        'auth/weak-password':        'Password is too weak.',
+        'auth/email-already-in-use': 'That email address is already registered. Try signing in instead.',
+        'auth/invalid-email':        'Please enter a valid email address.',
+        'auth/weak-password':        'Password is too weak. Use at least 8 characters.',
       };
-      showError('signup', map[e.code] || e.message);
+      showError('signup', map[e.code] || 'Could not create account. Please try again.');
     }
   });
 
