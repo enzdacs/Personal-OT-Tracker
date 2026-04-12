@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OT Tracker — Attendance</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div id="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">⏱</div>
+      <div>
+        <div class="logo-text">OT Tracker</div>
+        <div class="logo-sub">Attendance Monitor</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a class="nav-item" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
+      <a class="nav-item active" href="attendance.html"><span class="nav-icon">🗓</span> Attendance</a>
+      <a class="nav-item" href="overtime.html"><span class="nav-icon">⏰</span> Overtime</a>
+      <div class="nav-section-label">Account</div>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
+      <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card-sidebar">
+        <div class="user-avatar" id="sidebar-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-username">Loading…</div>
+          <div class="user-dept" id="sidebar-dept">—</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-backdrop"></div>
+
+  <main class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <button id="sidebar-toggle" aria-label="Menu">☰</button>
+        <span class="page-title">Attendance</span>
+      </div>
+      <div class="topbar-right">
+        <div class="live-clock-wrap">
+          <div class="live-clock-time" id="clock-time">—</div>
+          <div class="live-clock-date" id="clock-date">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- Period Selector -->
+      <div class="flex items-center justify-between" style="margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
+        <div>
+          <div style="font-weight:700;font-size:.95rem">Attendance Analytics</div>
+          <div class="text-sm" style="color:var(--text-light)">Your attendance statistics and breakdown</div>
+        </div>
+        <div class="period-tabs">
+          <button class="period-tab" data-period="today">Today</button>
+          <button class="period-tab" data-period="week">This Week</button>
+          <button class="period-tab active" data-period="month">This Month</button>
+          <button class="period-tab" data-period="year">This Year</button>
+        </div>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+        <div class="stat-card accent-used">
+          <div class="stat-label">Present</div>
+          <div class="stat-value" id="a-present">—</div>
+          <div class="stat-sub">Days attended</div>
+        </div>
+        <div class="stat-card accent-abs">
+          <div class="stat-label">Absent</div>
+          <div class="stat-value" id="a-absent">—</div>
+          <div class="stat-sub">Days missed</div>
+        </div>
+        <div class="stat-card" style="border-left:3px solid #7C3AED">
+          <div class="stat-label">Holidays</div>
+          <div class="stat-value" style="color:#7C3AED" id="a-holidays">—</div>
+          <div class="stat-sub">Tagged holidays</div>
+        </div>
+        <div class="stat-card accent-ot">
+          <div class="stat-label">Attendance Rate</div>
+          <div class="stat-value" id="a-rate">—</div>
+          <div class="stat-sub">Period percentage</div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="analytics-grid">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Attendance Breakdown</div>
+            <div class="chart-container">
+              <canvas id="chart-attendance-donut"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Attendance Overview</div>
+            <div class="chart-container">
+              <canvas id="chart-attendance-bar"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Records Table -->
+      <div class="table-card" style="margin-top:1rem">
+        <div class="table-toolbar">
+          <div class="table-toolbar-title">Attendance Records</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Work Hours</th>
+                <th>Time Out</th>
+              </tr>
+            </thead>
+            <tbody id="att-tbody">
+              <tr><td colspan="4"><div class="empty-state"><div class="spinner" style="margin:0 auto"></div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="firebase-config.js"></script>
+<script src="utils.js"></script>
+<script src="attendance.js"></script>
+</body>
+</html>
