@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OT Tracker — Settings</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<div id="app-shell">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">⏱</div>
+      <div>
+        <div class="logo-text">OT Tracker</div>
+        <div class="logo-sub">Attendance Monitor</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a class="nav-item" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
+      <a class="nav-item" href="analytics.html"><span class="nav-icon">📊</span> Analytics</a>
+      <div class="nav-section-label">Account</div>
+      <a class="nav-item active" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
+      <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card-sidebar">
+        <div class="user-avatar" id="sidebar-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-username">Loading…</div>
+          <div class="user-dept" id="sidebar-dept">—</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-backdrop"></div>
+
+  <main class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <button id="sidebar-toggle" aria-label="Menu">☰</button>
+        <span class="page-title">Settings</span>
+      </div>
+      <div class="topbar-right">
+        <div class="live-clock-wrap">
+          <div class="live-clock-time" id="clock-time">—</div>
+          <div class="live-clock-date" id="clock-date">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div class="settings-layout">
+
+        <!-- Settings Nav -->
+        <div class="settings-nav">
+          <button class="settings-nav-item active" data-panel="panel-schedule">📅 Schedule</button>
+          <button class="settings-nav-item" data-panel="panel-profile">👤 Profile</button>
+          <button class="settings-nav-item" data-panel="panel-security">🔒 Security</button>
+        </div>
+
+        <!-- Settings Panels -->
+        <div>
+
+          <!-- Schedule Panel -->
+          <div class="card settings-panel active" id="panel-schedule">
+            <div class="card-body">
+              <div class="settings-section-title">Work Schedule</div>
+              <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
+                Set your official working hours. The overtime counter activates when this period ends and you haven't timed out yet.
+              </p>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Work Start Time</label>
+                  <input class="form-control" type="time" id="s-work-start" value="08:00"/>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Work End Time</label>
+                  <input class="form-control" type="time" id="s-work-end" value="17:00"/>
+                </div>
+              </div>
+              <div class="form-hint" id="work-hours-preview" style="margin-top:-.5rem;margin-bottom:1rem;font-size:.8rem;color:var(--primary)"></div>
+
+              <div class="form-group">
+                <label class="form-label">Grace Period (minutes)</label>
+                <input class="form-control" type="number" id="s-grace" min="0" max="60" value="5" style="max-width:120px"/>
+                <div class="form-hint">How many minutes after work end before OT counter starts. Set 0 for immediate.</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Working Days</label>
+                <div class="days-grid">
+                  <input class="day-check" type="checkbox" id="day-0" value="0"/><label class="day-label" for="day-0">Su</label>
+                  <input class="day-check" type="checkbox" id="day-1" value="1" checked/><label class="day-label" for="day-1">Mo</label>
+                  <input class="day-check" type="checkbox" id="day-2" value="2" checked/><label class="day-label" for="day-2">Tu</label>
+                  <input class="day-check" type="checkbox" id="day-3" value="3" checked/><label class="day-label" for="day-3">We</label>
+                  <input class="day-check" type="checkbox" id="day-4" value="4" checked/><label class="day-label" for="day-4">Th</label>
+                  <input class="day-check" type="checkbox" id="day-5" value="5" checked/><label class="day-label" for="day-5">Fr</label>
+                  <input class="day-check" type="checkbox" id="day-6" value="6"/><label class="day-label" for="day-6">Sa</label>
+                </div>
+                <div class="form-hint mt-1">Only selected days will auto-create attendance rows.</div>
+              </div>
+
+              <button class="btn btn-primary" id="btn-save-schedule">Save Schedule</button>
+            </div>
+          </div>
+
+          <!-- Profile Panel -->
+          <div class="card settings-panel" id="panel-profile">
+            <div class="card-body">
+              <div class="settings-section-title">Profile Information</div>
+              <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input class="form-control" type="text" id="s-full-name" placeholder="Juan dela Cruz"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Department / Team <span style="color:var(--text-light);font-weight:400">(optional)</span></label>
+                <input class="form-control" type="text" id="s-department" placeholder="e.g. Engineering"/>
+              </div>
+              <button class="btn btn-primary" id="btn-save-profile">Save Profile</button>
+            </div>
+          </div>
+
+          <!-- Security Panel -->
+          <div class="card settings-panel" id="panel-security">
+            <div class="card-body">
+              <div class="settings-section-title">Change Password</div>
+              <div class="form-group">
+                <label class="form-label">Current Password</label>
+                <input class="form-control" type="password" id="s-current-pass" placeholder="Your current password"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">New Password</label>
+                <input class="form-control" type="password" id="s-new-pass" placeholder="Min. 8 characters"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Confirm New Password</label>
+                <input class="form-control" type="password" id="s-confirm-pass" placeholder="Repeat new password"/>
+              </div>
+              <button class="btn btn-primary" id="btn-change-pass">Change Password</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="utils.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>

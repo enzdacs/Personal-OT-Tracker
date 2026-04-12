@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OT Tracker — Sign In</title>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .auth-input {
+      width: 100%;
+      padding: .6rem .9rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: .88rem;
+      margin-bottom: .75rem;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      background: var(--card);
+      color: var(--text);
+    }
+    .auth-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .auth-btn {
+      width: 100%;
+      padding: .7rem;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      margin-top: .25rem;
+    }
+    .auth-btn:hover { background: var(--primary-dark); }
+    .auth-btn:disabled { opacity: .55; cursor: not-allowed; }
+    .auth-panel { display: none; }
+    .auth-panel.active { display: block; }
+    .auth-label { display: block; font-size: .8rem; font-weight: 600; margin-bottom: .3rem; color: var(--text); }
+    .auth-footer-note { text-align: center; font-size: .75rem; color: var(--text-light); margin-top: 1rem; }
+  </style>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+
+    <div class="auth-header">
+      <div class="logo">⏱</div>
+      <h1>OT Tracker</h1>
+      <p>Overtime &amp; Attendance Monitoring</p>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login">Sign In</button>
+      <button class="auth-tab"        id="tab-signup">Create Account</button>
+    </div>
+
+    <div class="auth-body">
+
+      <!-- Login Panel -->
+      <div class="auth-panel active" id="panel-login">
+        <div class="auth-error hidden" id="error-login"></div>
+        <label class="auth-label">Email</label>
+        <input class="auth-input" id="login-email" type="email" placeholder="you@email.com" autocomplete="email"/>
+        <label class="auth-label">Password</label>
+        <input class="auth-input" id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password"/>
+        <button class="auth-btn" id="btn-login">Sign In</button>
+        <p class="auth-footer-note">Philippines Standard Time (UTC+8)</p>
+      </div>
+
+      <!-- Sign Up Panel -->
+      <div class="auth-panel" id="panel-signup">
+        <div class="auth-error hidden" id="error-signup"></div>
+        <label class="auth-label">Full Name</label>
+        <input class="auth-input" id="signup-name" type="text" placeholder="Juan dela Cruz" autocomplete="name"/>
+        <label class="auth-label">Email</label>
+        <input class="auth-input" id="signup-email" type="email" placeholder="you@email.com" autocomplete="email"/>
+        <label class="auth-label">Password</label>
+        <input class="auth-input" id="signup-pass" type="password" placeholder="Min. 8 characters" autocomplete="new-password"/>
+        <label class="auth-label">Confirm Password</label>
+        <input class="auth-input" id="signup-pass2" type="password" placeholder="Repeat password" autocomplete="new-password"/>
+        <button class="auth-btn" id="btn-signup">Create Account</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="auth.js"></script>
+</body>
+</html>

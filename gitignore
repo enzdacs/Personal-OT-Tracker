@@ -1,0 +1,10 @@
+# Firebase credentials — never commit the real config
+firebase-config.js
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

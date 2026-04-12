@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OT Tracker — Dashboard</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<div id="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">⏱</div>
+      <div>
+        <div class="logo-text">OT Tracker</div>
+        <div class="logo-sub">Attendance Monitor</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a class="nav-item active" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
+      <a class="nav-item" href="analytics.html"><span class="nav-icon">📊</span> Analytics</a>
+      <div class="nav-section-label">Account</div>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
+      <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card-sidebar">
+        <div class="user-avatar" id="sidebar-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-username">Loading…</div>
+          <div class="user-dept" id="sidebar-dept">—</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-backdrop"></div>
+
+  <!-- ── Main ── -->
+  <main class="main-content">
+
+    <!-- Topbar (always visible) -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <button id="sidebar-toggle" aria-label="Menu">☰</button>
+        <span class="page-title">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <div class="live-clock-wrap">
+          <div class="live-clock-time" id="clock-time">—</div>
+          <div class="live-clock-date" id="clock-date">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page Content -->
+    <div class="page-content">
+
+      <!-- OT Banner -->
+      <div class="ot-banner hidden" id="ot-banner">
+        <div>
+          <div class="ot-banner-label">🔴 Overtime In Progress</div>
+          <div style="font-size:.82rem;opacity:.85;margin-top:.2rem">
+            Don't forget to press <strong>Time Out</strong> when you're done!
+          </div>
+        </div>
+        <div>
+          <div class="ot-banner-label" style="text-align:right">OT Duration</div>
+          <div class="ot-banner-timer" id="ot-timer">00:00:00</div>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="stats-grid">
+        <div class="stat-card accent-ot">
+          <div class="stat-label">OT This Month</div>
+          <div class="stat-value" id="stat-ot-month">—</div>
+          <div class="stat-sub">Accumulated hours</div>
+        </div>
+        <div class="stat-card accent-used">
+          <div class="stat-label">OT Used</div>
+          <div class="stat-value" id="stat-ot-used">—</div>
+          <div class="stat-sub">Total used as leave</div>
+        </div>
+        <div class="stat-card accent-rem">
+          <div class="stat-label">OT Remaining</div>
+          <div class="stat-value" id="stat-ot-rem">—</div>
+          <div class="stat-sub">Available to use</div>
+        </div>
+        <div class="stat-card accent-abs">
+          <div class="stat-label">Absences</div>
+          <div class="stat-value" id="stat-absences">—</div>
+          <div class="stat-sub">Total recorded</div>
+        </div>
+      </div>
+
+      <!-- Records Table -->
+      <div class="table-card">
+        <div class="table-toolbar">
+          <div>
+            <div class="table-toolbar-title">Attendance Records</div>
+            <div class="text-sm" style="color:var(--text-light);margin-top:.15rem">
+              Daily time tracking • Philippines Standard Time
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-add-row">＋ Add Record</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time Out</th>
+                <th>Work Hours</th>
+                <th>Overtime</th>
+                <th>OT Use</th>
+                <th>More</th>
+              </tr>
+            </thead>
+            <tbody id="records-tbody">
+              <tr><td colspan="6">
+                <div class="empty-state">
+                  <div class="spinner" style="margin:0 auto"></div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination-bar" id="pagination-bar" style="display:none"></div>
+
+        <!-- Legend -->
+        <div style="padding:.65rem 1.2rem;border-top:1px solid var(--border);display:flex;gap:1rem;flex-wrap:wrap">
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
+            <span style="width:12px;height:12px;background:var(--primary-light);border-radius:3px;display:inline-block;border:1px solid #BFDBFE"></span> Today
+          </span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
+            <span style="width:12px;height:12px;background:var(--accent-light);border-radius:3px;display:inline-block;border:1px solid #FDE68A"></span> Has OT
+          </span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
+            <span style="width:12px;height:12px;background:var(--success-light);border-radius:3px;display:inline-block;border:1px solid #A7F3D0"></span> OT Used
+          </span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
+            <span style="width:12px;height:12px;background:#FFF5F5;border-radius:3px;display:inline-block;border:1px solid #FECACA"></span> Absent
+          </span>
+        </div>
+      </div>
+
+    </div><!-- /page-content -->
+  </main>
+</div>
+
+<!-- ══ View Modal ══ -->
+<div class="modal-overlay hidden" id="view-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Record Details</span>
+      <button class="modal-close" data-close-modal="view-modal">✕</button>
+    </div>
+    <div class="modal-body" id="view-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="view-modal">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Add / Edit Modal ══ -->
+<div class="modal-overlay hidden" id="add-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Add Record</span>
+      <button class="modal-close" data-close-modal="add-modal">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input class="form-control" type="date" id="edit-date"/>
+      </div>
+
+      <!-- Work Hours (auto from settings, editable via pencil) -->
+      <div class="form-group">
+        <div class="form-label-row">
+          <label class="form-label">Work Hours</label>
+          <button type="button" class="work-edit-btn" onclick="openWorkHoursEditor()" title="Customize work hours for this date only">✏️</button>
+          <span style="font-size:.7rem;color:var(--text-light)">(from settings, click ✏️ to override)</span>
+        </div>
+        <!-- Hidden editor — shown when pencil is clicked -->
+        <div id="work-hours-editor" class="hidden" style="background:var(--bg);border-radius:8px;padding:.75rem;margin-bottom:.5rem;border:1px solid var(--border)">
+          <div style="font-size:.75rem;font-weight:600;color:var(--text-light);margin-bottom:.5rem">Custom hours for this date only</div>
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label" style="font-size:.75rem">Work Start</label>
+              <input class="form-control" type="time" id="edit-work-start"/>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label" style="font-size:.75rem">Work End</label>
+              <input class="form-control" type="time" id="edit-work-end"/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Time Out</label>
+        <input class="form-control" type="text" id="edit-timeout" placeholder="e.g. 5:30 PM"/>
+        <div class="form-hint">Format: 5:30 PM — Overtime is calculated automatically</div>
+      </div>
+
+      <!-- Auto-calculated display -->
+      <div class="form-row" style="margin-bottom:1rem">
+        <div style="background:var(--bg);border-radius:7px;padding:.55rem .75rem;border:1px solid var(--border)">
+          <div style="font-size:.68rem;color:var(--text-light);font-weight:600;margin-bottom:.15rem">WORK HOURS</div>
+          <div style="font-weight:700;color:var(--text)" id="edit-work-display">—</div>
+        </div>
+        <div style="background:var(--accent-light);border-radius:7px;padding:.55rem .75rem;border:1px solid #FDE68A">
+          <div style="font-size:.68rem;color:var(--text-light);font-weight:600;margin-bottom:.15rem">OVERTIME</div>
+          <div style="font-weight:700;color:var(--accent)" id="edit-ot-display">—</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Note (optional)</label>
+        <textarea class="form-control" id="edit-note" rows="2" placeholder="Any remarks…" style="resize:vertical"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="add-modal">Cancel</button>
+      <button class="btn btn-primary" id="btn-save-record">Save Record</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Delete Modal ══ -->
+<div class="modal-overlay hidden" id="delete-modal">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <span class="modal-title">Delete Record</span>
+      <button class="modal-close" data-close-modal="delete-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.88rem">Are you sure you want to delete the record for <strong id="delete-info"></strong>? This cannot be undone.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="delete-modal">Cancel</button>
+      <button class="btn btn-danger" id="btn-confirm-delete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="utils.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>
