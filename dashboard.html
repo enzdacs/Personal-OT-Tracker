@@ -4,13 +4,16 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>OT Tracker — Dashboard</title>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="OT Tracker"/>
+  <link rel="apple-touch-icon" href="OTracker-logo.png"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-
 <div id="app-shell">
 
-  <!-- ── Sidebar ── -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-icon">⏱</div>
@@ -24,6 +27,7 @@
       <a class="nav-item active" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
       <a class="nav-item" href="attendance.html"><span class="nav-icon">🗓</span> Attendance</a>
       <a class="nav-item" href="overtime.html"><span class="nav-icon">⏰</span> Overtime</a>
+      <a class="nav-item" href="schedule.html"><span class="nav-icon">📅</span> Schedule</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
@@ -41,16 +45,26 @@
 
   <div class="sidebar-backdrop"></div>
 
-  <!-- ── Main ── -->
   <main class="main-content">
-
-    <!-- Topbar (always visible) -->
     <div class="topbar">
       <div class="topbar-left">
         <button id="sidebar-toggle" aria-label="Menu">☰</button>
         <span class="page-title">Dashboard</span>
       </div>
       <div class="topbar-right">
+                <div class="notif-bell-wrap">
+          <button class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
+            🔔<span class="notif-dot hidden" id="notif-dot"></span>
+          </button>
+          <!-- Notification Dropdown (Facebook-style) -->
+          <div class="notif-dropdown hidden" id="notif-dropdown">
+            <div class="notif-dropdown-header">
+              <span class="notif-dropdown-title">Notifications</span>
+              <button class="notif-clear-all btn btn-ghost btn-sm" onclick="clearAllNotifications()">Clear all</button>
+            </div>
+            <div class="notif-dropdown-list"></div>
+          </div>
+        </div>
         <div class="live-clock-wrap">
           <div class="live-clock-time" id="clock-time">—</div>
           <div class="live-clock-date" id="clock-date">—</div>
@@ -58,7 +72,6 @@
       </div>
     </div>
 
-    <!-- Page Content -->
     <div class="page-content">
 
       <!-- User greeting card -->
@@ -68,12 +81,12 @@
         <div class="user-greeting-dept" id="greeting-dept">—</div>
       </div>
 
-      <!-- Quick Stats -->
+      <!-- Quick Stats (OT This Month removed; Leave Days Earned added) -->
       <div class="stats-grid">
-        <div class="stat-card accent-ot">
-          <div class="stat-label">OT This Month</div>
-          <div class="stat-value" id="stat-ot-month">—</div>
-          <div class="stat-sub">Accumulated hours</div>
+        <div class="stat-card accent-leave">
+          <div class="stat-label">Leave Days Earned</div>
+          <div class="stat-value" id="stat-leave-days">—</div>
+          <div class="stat-sub">From OT hours</div>
         </div>
         <div class="stat-card accent-used">
           <div class="stat-label">OT Used</div>
@@ -99,7 +112,26 @@
             <div class="table-toolbar-title">Attendance Records</div>
             <div class="toolbar-pst">Daily time tracking</div>
           </div>
-          <button class="btn btn-primary" id="btn-add-row">＋ Add Record</button>
+          <div class="toolbar-actions">
+            <button class="btn btn-ghost btn-icon-label" id="btn-filter" title="Filter records">
+              <span class="btn-icon-only">🔍</span>
+              <span class="btn-label-full">Filter</span>
+            </button>
+            <button class="btn btn-ghost btn-icon-label" id="btn-export" title="Export records">
+              <span class="btn-icon-only">📥</span>
+              <span class="btn-label-full">Export</span>
+            </button>
+            <button class="btn btn-primary btn-icon-label" id="btn-add-row" title="Add record">
+              <span class="btn-icon-only">＋</span>
+              <span class="btn-label-full">＋ Add Record</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Filter Banner -->
+        <div id="filter-banner" class="hidden" style="padding:.5rem 1.2rem;background:var(--primary-light);border-bottom:1px solid #BFDBFE;display:flex;align-items:center;justify-content:space-between;font-size:.78rem;color:var(--primary)">
+          <span id="filter-banner-text">Filters active</span>
+          <button onclick="clearFilters()" style="background:none;border:none;cursor:pointer;color:var(--primary);font-weight:600;font-size:.78rem">✕ Clear</button>
         </div>
 
         <div class="table-wrap">
@@ -115,39 +147,155 @@
             </thead>
             <tbody id="records-tbody">
               <tr><td colspan="5">
-                <div class="empty-state">
-                  <div class="spinner" style="margin:0 auto"></div>
-                </div>
+                <div class="empty-state"><div class="spinner" style="margin:0 auto"></div></div>
               </td></tr>
             </tbody>
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="pagination-bar" id="pagination-bar" style="display:none"></div>
 
         <!-- Legend -->
         <div style="padding:.65rem 1.2rem;border-top:1px solid var(--border);display:flex;gap:1rem;flex-wrap:wrap">
-          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
-            <span style="width:12px;height:12px;background:var(--primary-light);border-radius:3px;display:inline-block;border:1px solid #BFDBFE"></span> Today
-          </span>
-          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
-            <span style="width:12px;height:12px;background:var(--accent-light);border-radius:3px;display:inline-block;border:1px solid #FDE68A"></span> Has OT
-          </span>
-          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
-            <span style="width:12px;height:12px;background:var(--success-light);border-radius:3px;display:inline-block;border:1px solid #A7F3D0"></span> OT Used
-          </span>
-          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
-            <span style="width:12px;height:12px;background:#FFF5F5;border-radius:3px;display:inline-block;border:1px solid #FECACA"></span> Absent
-          </span>
-          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem">
-            <span style="width:12px;height:12px;background:#EDE9FE;border-radius:3px;display:inline-block;border:1px solid #C4B5FD"></span> Holiday
-          </span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:var(--primary-light);border-radius:3px;display:inline-block;border:1px solid #BFDBFE"></span> Today</span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:var(--accent-light);border-radius:3px;display:inline-block;border:1px solid #FDE68A"></span> Has OT</span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:var(--success-light);border-radius:3px;display:inline-block;border:1px solid #A7F3D0"></span> OT Used</span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:#FFF5F5;border-radius:3px;display:inline-block;border:1px solid #FECACA"></span> Absent</span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:#EDE9FE;border-radius:3px;display:inline-block;border:1px solid #C4B5FD"></span> Holiday</span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:#ECFDF5;border-radius:3px;display:inline-block;border:1px solid #A7F3D0"></span> OT Leave</span>
         </div>
       </div>
 
-    </div><!-- /page-content -->
+    </div>
   </main>
+</div>
+
+<!-- ══ USE OT Modal ══ -->
+<div class="modal-overlay hidden" id="use-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">Use OT Hours</span>
+      <button class="modal-close" data-close-modal="use-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.84rem;color:var(--text-light);margin-bottom:1rem">
+        Record how you want to use your overtime for <strong id="use-modal-date">—</strong>.
+        Available OT: <strong id="use-modal-avail">—</strong>
+      </p>
+      <div class="form-group">
+        <label class="form-label">Date of Leave / Tardiness</label>
+        <input class="form-control" type="date" id="use-leave-date"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Usage Type</label>
+        <select class="form-control" id="use-type" onchange="handleUseTypeChange()">
+          <option value="leave">Full Day Leave (FL-OT)</option>
+          <option value="halfday">Half Day (HD-OT)</option>
+          <option value="late">Late / Undertime (hours used)</option>
+        </select>
+      </div>
+      <div class="form-group" id="use-hours-group">
+        <label class="form-label">Hours to Deduct</label>
+        <input class="form-control" type="number" id="use-hours" min="0.25" step="0.25" placeholder="e.g. 1.5"/>
+        <div class="form-hint" id="use-hours-hint">Enter how many OT hours to deduct (e.g. 1.5 = 1h 30m).</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Note (optional)</label>
+        <input class="form-control" type="text" id="use-note" placeholder="e.g. Sick leave, appointment…"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="use-modal">Cancel</button>
+      <button class="btn btn-primary" id="btn-confirm-use">Confirm Use</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Export Modal ══ -->
+<div class="modal-overlay hidden" id="export-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">Export Records</span>
+      <button class="modal-close" data-close-modal="export-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Month</label>
+          <select class="form-control" id="export-month">
+            <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+            <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+            <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Year</label>
+          <input class="form-control" type="number" id="export-year" min="2020" max="2100"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Format</label>
+        <div style="display:flex;gap:.75rem;margin-top:.25rem">
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem">
+            <input type="radio" name="export-fmt" value="pdf" checked/> PDF
+          </label>
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem">
+            <input type="radio" name="export-fmt" value="csv"/> CSV
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="export-modal">Cancel</button>
+      <button class="btn btn-primary" id="btn-do-export">Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Filter Modal ══ -->
+<div class="modal-overlay hidden" id="filter-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">Filter Records</span>
+      <button class="modal-close" data-close-modal="filter-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-control" id="f-status">
+          <option value="">All Statuses</option>
+          <option value="present">Present</option>
+          <option value="absent">Absent</option>
+          <option value="holiday">Holiday</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date From</label>
+          <input class="form-control" type="date" id="f-date-from"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date To</label>
+          <input class="form-control" type="date" id="f-date-to"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">OT Use</label>
+        <select class="form-control" id="f-ot-use">
+          <option value="">Any</option>
+          <option value="used">OT Used</option>
+          <option value="unused">OT Not Used</option>
+          <option value="has-ot">Has Overtime</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="clearFilters();closeModal('filter-modal')">Clear Filters</button>
+      <button class="btn btn-primary" id="btn-apply-filter">Apply</button>
+    </div>
+  </div>
 </div>
 
 <!-- ══ New User Onboarding Modal ══ -->
@@ -214,13 +362,10 @@
       <button class="modal-close" data-close-modal="add-modal">✕</button>
     </div>
     <div class="modal-body">
-
       <div class="form-group">
         <label class="form-label">Date</label>
         <input class="form-control" type="date" id="edit-date"/>
       </div>
-
-      <!-- Status Dropdown -->
       <div class="form-group">
         <label class="form-label">Status</label>
         <select class="form-control" id="edit-status" onchange="handleStatusChange()">
@@ -230,14 +375,10 @@
         </select>
         <div class="form-hint">Choose Absent or Holiday to skip time out entry.</div>
       </div>
-
-      <!-- Work Hours (auto from settings, editable via pencil) -->
       <div class="form-group" id="work-hours-group">
         <div class="form-label-row" style="margin-bottom:.5rem">
           <label class="form-label" style="margin-bottom:0">Work Hours</label>
-          <button type="button" class="work-edit-btn-visible" onclick="openWorkHoursEditor()" title="Customize work hours for this date only">
-            ✏️ Override
-          </button>
+          <button type="button" class="work-edit-btn-visible" onclick="openWorkHoursEditor()" title="Customize work hours for this date only">✏️ Override</button>
         </div>
         <div id="work-hours-editor" class="hidden" style="background:var(--bg);border-radius:8px;padding:.75rem;margin-bottom:.5rem;border:1px solid var(--border)">
           <div style="font-size:.75rem;font-weight:600;color:var(--text-light);margin-bottom:.5rem">Custom hours for this date only</div>
@@ -253,14 +394,11 @@
           </div>
         </div>
       </div>
-
       <div class="form-group" id="timeout-group">
         <label class="form-label">Time Out</label>
         <input class="form-control" type="text" id="edit-timeout" placeholder="e.g. 5:30 PM"/>
         <div class="form-hint">Format: 5:30 PM — Overtime is calculated automatically</div>
       </div>
-
-      <!-- Auto-calculated display -->
       <div class="form-row" style="margin-bottom:1rem" id="calc-display-group">
         <div style="background:var(--bg);border-radius:7px;padding:.55rem .75rem;border:1px solid var(--border)">
           <div style="font-size:.68rem;color:var(--text-light);font-weight:600;margin-bottom:.15rem">WORK HOURS</div>
@@ -271,7 +409,6 @@
           <div style="font-weight:700;color:var(--accent)" id="edit-ot-display">—</div>
         </div>
       </div>
-
       <div class="form-group">
         <label class="form-label">Note (optional)</label>
         <textarea class="form-control" id="edit-note" rows="2" placeholder="Any remarks…" style="resize:vertical"></textarea>
@@ -291,6 +428,10 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="utils.js"></script>
+<script src="notifications.js"></script>
 <script src="dashboard.js"></script>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
+</script>
 </body>
 </html>
