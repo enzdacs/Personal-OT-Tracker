@@ -145,14 +145,18 @@ async function getUserSettings(uid) {
       const data = doc.data();
       // Fill in any missing defaults so the app never gets null for critical fields
       _settings = {
-        fullName:    data.fullName    || '',
-        username:    data.username    || '',
-        department:  data.department  || '',
-        workStart:   data.workStart   || '08:00',
-        workEnd:     data.workEnd     || '17:00',
-        workDays:    data.workDays    || [1, 2, 3, 4, 5],
-        gracePeriod: data.gracePeriod ?? 5,
-        isNewUser:   data.isNewUser   || false,
+        fullName:       data.fullName       || '',
+        username:       data.username       || '',
+        department:     data.department     || '',
+        workStart:      data.workStart      || '08:00',
+        workEnd:        data.workEnd        || '17:00',
+        workDays:       data.workDays       || [1, 2, 3, 4, 5],
+        gracePeriod:    data.gracePeriod    ?? 5,
+        isNewUser:      data.isNewUser      || false,
+        multiSchedule:  data.multiSchedule  || false,
+        perDaySchedule: data.perDaySchedule || {},
+        otToLeaveHours: data.otToLeaveHours || null,
+        notifSettings:  data.notifSettings  || { shiftWarnMins: 5, otRemindFreq: 'daily', timeoutRemindFreq: '60' },
       };
     } else {
       _settings = {
