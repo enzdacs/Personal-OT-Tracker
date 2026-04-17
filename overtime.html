@@ -4,6 +4,11 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>OT Tracker — Overtime</title>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="OT Tracker"/>
+  <link rel="apple-touch-icon" href="OTracker-logo.png"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -21,6 +26,7 @@
       <a class="nav-item" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
       <a class="nav-item" href="attendance.html"><span class="nav-icon">🗓</span> Attendance</a>
       <a class="nav-item active" href="overtime.html"><span class="nav-icon">⏰</span> Overtime</a>
+      <a class="nav-item" href="schedule.html"><span class="nav-icon">📅</span> Schedule</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
@@ -45,6 +51,19 @@
         <span class="page-title">Overtime</span>
       </div>
       <div class="topbar-right">
+                <div class="notif-bell-wrap">
+          <button class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
+            🔔<span class="notif-dot hidden" id="notif-dot"></span>
+          </button>
+          <!-- Notification Dropdown (Facebook-style) -->
+          <div class="notif-dropdown hidden" id="notif-dropdown">
+            <div class="notif-dropdown-header">
+              <span class="notif-dropdown-title">Notifications</span>
+              <button class="notif-clear-all btn btn-ghost btn-sm" onclick="clearAllNotifications()">Clear all</button>
+            </div>
+            <div class="notif-dropdown-list"></div>
+          </div>
+        </div>
         <div class="live-clock-wrap">
           <div class="live-clock-time" id="clock-time">—</div>
           <div class="live-clock-date" id="clock-date">—</div>
@@ -92,12 +111,22 @@
         </div>
       </div>
 
-      <!-- OT Bar Chart -->
-      <div class="card" style="margin-bottom:1rem">
-        <div class="card-body">
-          <div class="card-title">Overtime Hours</div>
-          <div class="chart-container">
-            <canvas id="chart-ot"></canvas>
+      <!-- OT Chart + Leave Suggestor side by side on desktop -->
+      <div class="ot-chart-suggestor-row" style="margin-bottom:1rem">
+        <div class="card" style="overflow:hidden;min-width:0;flex:1">
+          <div class="card-body">
+            <div class="card-title">Overtime Hours</div>
+            <div class="chart-container">
+              <canvas id="chart-ot"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="overflow:hidden;min-width:0;width:260px;flex-shrink:0" id="leave-suggestor-card">
+          <div class="card-body">
+            <div class="card-title">Leave Conversion</div>
+            <div id="leave-suggestor-content">
+              <div style="text-align:center;padding:1rem;color:var(--text-light);font-size:.82rem">Loading…</div>
+            </div>
           </div>
         </div>
       </div>
@@ -135,6 +164,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="firebase-config.js"></script>
 <script src="utils.js"></script>
+<script src="notifications.js"></script>
 <script src="overtime.js"></script>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
+</script>
 </body>
 </html>
