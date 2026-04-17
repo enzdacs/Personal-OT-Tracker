@@ -1,0 +1,14 @@
+{
+  "name": "OT Tracker",
+  "short_name": "OT Tracker",
+  "description": "Overtime & Attendance Monitoring",
+  "start_url": "/dashboard.html",
+  "display": "standalone",
+  "background_color": "#1E293B",
+  "theme_color": "#3B82F6",
+  "orientation": "any",
+  "icons": [
+    { "src": "OTracker-logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "OTracker-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
