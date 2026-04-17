@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
     startLiveClock(document.getElementById('clock-time'), document.getElementById('clock-date'));
     await loadData();
+    initNotifications(user, userSettings);
     hideLoader();
   });
 
@@ -31,6 +32,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await auth.signOut(); window.location.href = 'index.html';
+  });
+  document.querySelectorAll('[data-close-modal]').forEach(btn => {
+    btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
+  });
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
   });
 });
 
@@ -84,6 +91,55 @@ function renderAll() {
 
   renderOTChart(recs);
   renderOTTable(recs);
+  renderLeaveSuggestor();
+}
+
+function renderLeaveSuggestor() {
+  const el = document.getElementById('leave-suggestor-content');
+  if (!el) return;
+  const allOT  = allRecords.reduce((s, r) => s + (r.otMinutes || 0), 0);
+  const usedOT = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
+  const remOT  = allOT - usedOT;
+
+  const ws = userSettings.workStart || '08:00';
+  const we = userSettings.workEnd   || '17:00';
+  const [sh, sm] = ws.split(':').map(Number);
+  const [eh, em] = we.split(':').map(Number);
+  const workHours = userSettings.otToLeaveHours || ((eh*60+em-sh*60-sm)/60) || 8;
+  const workMins  = workHours * 60;
+  const halfMins  = workMins / 2;
+
+  if (remOT === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:1rem;color:var(--text-light);font-size:.82rem">No OT hours remaining to convert.</div>`;
+    return;
+  }
+
+  const fullDays  = Math.floor(remOT / workMins);
+  const afterDays = remOT - fullDays * workMins;
+  const halfDays  = Math.floor(afterDays / halfMins);
+  const lateHours = Math.round((afterDays - halfDays * halfMins) / 60 * 10) / 10;
+
+  el.innerHTML = `
+    <div style="background:var(--bg);border-radius:7px;padding:.65rem;margin-bottom:.6rem">
+      <div style="font-size:.68rem;font-weight:600;text-transform:uppercase;color:var(--text-light);margin-bottom:.2rem">Remaining OT</div>
+      <div style="font-size:1.3rem;font-weight:700;color:var(--primary)">${minutesToHm(remOT)}</div>
+      <div style="font-size:.68rem;color:var(--text-light)">${workHours}h work day</div>
+    </div>
+    <div style="display:grid;gap:.4rem">
+      ${fullDays > 0 ? `<div style="background:var(--success-light);border-radius:6px;padding:.5rem .7rem;border:1px solid #A7F3D0;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.75rem;color:var(--success);font-weight:600">Full Days</span>
+        <span style="font-size:1.1rem;font-weight:700;color:var(--success)">${fullDays}d</span>
+      </div>` : ''}
+      ${halfDays > 0 ? `<div style="background:var(--primary-light);border-radius:6px;padding:.5rem .7rem;border:1px solid #BFDBFE;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.75rem;color:var(--primary);font-weight:600">Half Days</span>
+        <span style="font-size:1.1rem;font-weight:700;color:var(--primary)">${halfDays}d</span>
+      </div>` : ''}
+      ${lateHours > 0 ? `<div style="background:var(--accent-light);border-radius:6px;padding:.5rem .7rem;border:1px solid #FDE68A;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.75rem;color:var(--accent);font-weight:600">Late Hours</span>
+        <span style="font-size:1.1rem;font-weight:700;color:var(--accent)">${lateHours}h</span>
+      </div>` : ''}
+      ${fullDays===0&&halfDays===0&&lateHours===0 ? `<div style="font-size:.78rem;color:var(--text-light);text-align:center;padding:.5rem">Less than 1 leave worth of OT.</div>` : ''}
+    </div>`;
 }
 
 function renderOTChart(recs) {
