@@ -1,11 +1,12 @@
 // =============================================
-// settings.js — User preferences logic
+// settings.js — Profile & Security only
+// (Work schedule is in schedule.js / schedule.html)
 // =============================================
 
 document.addEventListener('DOMContentLoaded', () => {
   showLoader();
   requireAuth(async user => {
-    currentUser = user;
+    currentUser  = user;
     userSettings = await getUserSettings(user.uid);
     updateSidebarUser();
     initSidebar();
@@ -14,10 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('clock-date')
     );
     populateForm();
+    initNotifications(user, userSettings);
     hideLoader();
   });
 
-  // Settings sub-nav
+  // Profile / Security sub-nav tabs
   document.querySelectorAll('.settings-nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
@@ -27,17 +29,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  document.getElementById('btn-save-schedule').addEventListener('click',  saveSchedule);
-  document.getElementById('btn-save-profile').addEventListener('click',   saveProfile);
-  document.getElementById('btn-change-pass').addEventListener('click',    changePassword);
+  document.querySelectorAll('[data-close-modal]').forEach(btn => {
+    btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
+  });
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
+  });
+
+  document.getElementById('btn-save-profile').addEventListener('click', saveProfile);
+  document.getElementById('btn-change-pass').addEventListener('click',  changePassword);
+  document.getElementById('btn-save-notifications').addEventListener('click', saveNotificationSettings);
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await auth.signOut();
     window.location.href = 'index.html';
   });
 });
 
-let currentUser   = null;
-let userSettings  = null;
+let currentUser  = null;
+let userSettings = null;
 
 function updateSidebarUser() {
   const name = userSettings.fullName || currentUser.email;
@@ -48,61 +57,53 @@ function updateSidebarUser() {
 
 function populateForm() {
   const s = userSettings;
-  document.getElementById('s-work-start').value    = s.workStart   || '08:00';
-  document.getElementById('s-work-end').value      = s.workEnd     || '17:00';
-  document.getElementById('s-grace').value         = s.gracePeriod ?? 5;
-  document.getElementById('s-full-name').value     = s.fullName    || '';
-  document.getElementById('s-username').value       = s.username    || '';
-  document.getElementById('s-department').value    = s.department  || '';
+  document.getElementById('s-full-name').value  = s.fullName   || '';
+  document.getElementById('s-username').value   = s.username   || '';
+  document.getElementById('s-department').value = s.department || '';
 
-  const workDays = s.workDays || [1,2,3,4,5];
-  document.querySelectorAll('.day-check').forEach(cb => {
-    cb.checked = workDays.includes(parseInt(cb.value));
-  });
+  // Notification settings
+  const ns = s.notifSettings || {};
+  const shiftWarnEl = document.getElementById('n-shift-warn-mins');
+  const otFreqEl    = document.getElementById('n-ot-remind-freq');
+  const toFreqEl    = document.getElementById('n-timeout-remind-freq');
+  const toCustomEl  = document.getElementById('n-timeout-custom-mins');
 
-  updateWorkHoursPreview();
+  if (shiftWarnEl) shiftWarnEl.value = ns.shiftWarnMins   ?? 5;
+  if (otFreqEl)    otFreqEl.value    = ns.otRemindFreq    || 'daily';
+  if (toFreqEl)    toFreqEl.value    = ns.timeoutRemindFreq || '60';
+  if (toCustomEl)  toCustomEl.value  = ns.timeoutCustomMins || 60;
+
+  // Show/hide custom group based on current value
+  const grp = document.getElementById('n-timeout-custom-group');
+  if (grp && toFreqEl) grp.style.display = toFreqEl.value === 'custom' ? 'block' : 'none';
 }
 
-document.addEventListener('change', e => {
-  if (e.target.id === 's-work-start' || e.target.id === 's-work-end') {
-    updateWorkHoursPreview();
-  }
-});
+async function saveNotificationSettings() {
+  const shiftWarnMins    = parseInt(document.getElementById('n-shift-warn-mins')?.value) || 5;
+  const otRemindFreq     = document.getElementById('n-ot-remind-freq')?.value     || 'daily';
+  const timeoutFreqSel   = document.getElementById('n-timeout-remind-freq')?.value || '60';
+  const timeoutCustomMins = parseInt(document.getElementById('n-timeout-custom-mins')?.value) || 60;
 
-function updateWorkHoursPreview() {
-  const start = timeInputToHm(document.getElementById('s-work-start').value);
-  const end   = timeInputToHm(document.getElementById('s-work-end').value);
-  const el    = document.getElementById('work-hours-preview');
-  if (!start || !end || !el) return;
-  const mins  = (end.h * 60 + end.m) - (start.h * 60 + start.m);
-  if (mins <= 0) { el.textContent = 'Invalid range'; return; }
-  el.textContent = `= ${minutesToHm(mins)} of work per day`;
-}
+  const notifSettings = {
+    shiftWarnMins,
+    otRemindFreq,
+    timeoutRemindFreq: timeoutFreqSel,
+    timeoutCustomMins: timeoutFreqSel === 'custom' ? timeoutCustomMins : null,
+  };
 
-async function saveSchedule() {
-  const start  = document.getElementById('s-work-start').value;
-  const end    = document.getElementById('s-work-end').value;
-  const grace  = parseInt(document.getElementById('s-grace').value) || 0;
-  const days   = [];
-  document.querySelectorAll('.day-check:checked').forEach(cb => days.push(parseInt(cb.value)));
-
-  if (!start || !end)      { showToast('Please set work start and end times.', 'error'); return; }
-  if (days.length === 0)   { showToast('Please select at least one working day.', 'error'); return; }
-
-  const btn = document.getElementById('btn-save-schedule');
+  const btn = document.getElementById('btn-save-notifications');
   btn.disabled = true; btn.textContent = 'Saving…';
-
   try {
     await db.collection('users').doc(currentUser.uid)
             .collection('config').doc('settings')
-            .set({ workStart: start, workEnd: end, gracePeriod: grace, workDays: days }, { merge: true });
+            .set({ notifSettings }, { merge: true });
     clearSettingsCache();
     userSettings = await getUserSettings(currentUser.uid);
-    showToast('Schedule saved ✓', 'success');
+    showToast('Notification settings saved ✓', 'success');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
-    btn.disabled = false; btn.textContent = 'Save Schedule';
+    btn.disabled = false; btn.textContent = 'Save Notification Settings';
   }
 }
 
@@ -132,9 +133,9 @@ async function saveProfile() {
 }
 
 async function changePassword() {
-  const current  = document.getElementById('s-current-pass').value;
-  const newPass  = document.getElementById('s-new-pass').value;
-  const confirm  = document.getElementById('s-confirm-pass').value;
+  const current = document.getElementById('s-current-pass').value;
+  const newPass = document.getElementById('s-new-pass').value;
+  const confirm = document.getElementById('s-confirm-pass').value;
 
   if (!current || !newPass || !confirm) { showToast('Fill in all password fields.', 'error'); return; }
   if (newPass !== confirm)  { showToast('New passwords do not match.', 'error'); return; }
@@ -144,7 +145,6 @@ async function changePassword() {
   btn.disabled = true; btn.textContent = 'Changing…';
 
   try {
-    // Re-authenticate
     const cred = firebase.auth.EmailAuthProvider.credential(currentUser.email, current);
     await currentUser.reauthenticateWithCredential(cred);
     await currentUser.updatePassword(newPass);
@@ -154,8 +154,8 @@ async function changePassword() {
     showToast('Password changed ✓', 'success');
   } catch(e) {
     const map = {
-      'auth/wrong-password':      'Current password is incorrect.',
-      'auth/weak-password':       'New password is too weak.',
+      'auth/wrong-password':        'Current password is incorrect.',
+      'auth/weak-password':         'New password is too weak.',
       'auth/requires-recent-login': 'Please sign out and sign back in first.',
     };
     showToast(map[e.code] || e.message, 'error');
