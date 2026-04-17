@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     await loadRecords();
     startAbsenceWatcher();
     startWorkdayWatcher();
+    initNotifications(user, userSettings);
     hideLoader();
     checkNewUser();
   });
@@ -47,6 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btn-add-row').addEventListener('click', () => openAddModal());
   document.getElementById('btn-save-record').addEventListener('click', saveRecord);
+  document.getElementById('btn-filter').addEventListener('click', () => openModal('filter-modal'));
+  document.getElementById('btn-export').addEventListener('click', openExportModal);
+  document.getElementById('btn-apply-filter').addEventListener('click', applyFilters);
+  document.getElementById('btn-do-export').addEventListener('click', doExport);
+  document.getElementById('btn-confirm-use').addEventListener('click', confirmUseOT);
 
   // Onboarding modal buttons
   document.getElementById('btn-ob-save').addEventListener('click', saveOnboarding);
@@ -233,39 +239,44 @@ function renderTable() {
   const today = getDateKey();
   if (!tbody) return;
 
-  if (allRecords.length === 0) {
+  const filteredRecords = getFilteredTableRecords();
+  if (filteredRecords.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5">
       <div class="empty-state">
         <div class="empty-icon">📋</div>
-        <p>No records yet. Your attendance will appear here daily.</p>
+        <p>${Object.values(activeFilters).some(v=>v) ? 'No records match your filters.' : 'No records yet. Your attendance will appear here daily.'}</p>
       </div></td></tr>`;
     renderPagination(0);
     return;
   }
 
-  const totalPages = Math.ceil(allRecords.length / ROWS_PER_PAGE);
+  const totalPages = Math.ceil(filteredRecords.length / ROWS_PER_PAGE);
   if (currentPage > totalPages) currentPage = totalPages;
   const start    = (currentPage - 1) * ROWS_PER_PAGE;
-  const pageRecs = allRecords.slice(start, start + ROWS_PER_PAGE);
+  const pageRecs = filteredRecords.slice(start, start + ROWS_PER_PAGE);
 
   tbody.innerHTML = pageRecs.map(rec => {
     const isToday     = rec.id === today;
     const isAbsent    = rec.status === 'absent';
     const isHoliday   = rec.status === 'holiday';
+    const isOTLeave   = rec.status === 'ot-leave';
     const isUsed      = rec.otUsed;
     const hasOT       = rec.otMinutes > 0;
-    const notTimedOut = !rec.timeOutStamp && !isAbsent && !isHoliday;
+    const notTimedOut = !rec.timeOutStamp && !isAbsent && !isHoliday && !isOTLeave;
 
     let rowClass = '';
     if (isAbsent)                    rowClass = 'row-absent';
     else if (isHoliday)              rowClass = 'row-holiday';
+    else if (isOTLeave)              rowClass = 'row-ot-leave';
     else if (isUsed)                 rowClass = 'row-used';
     else if (isToday && notTimedOut) rowClass = 'row-today';
     else if (hasOT)                  rowClass = 'row-ot';
 
     // Time Out cell
     let timeOutCell;
-    if (isHoliday) {
+    if (isOTLeave) {
+      timeOutCell = `<span class="badge badge-ot-leave">${rec.otUsageType || 'OT-L'}</span>`;
+    } else if (isHoliday) {
       timeOutCell = `<span class="badge badge-holiday">HOL</span>`;
     } else if (isAbsent) {
       timeOutCell = `<span class="badge badge-danger">ABS</span>`;
@@ -288,16 +299,16 @@ function renderTable() {
       </div>`;
 
     // OT cell
-    const otDisplay = (isAbsent || isHoliday) ? '—'
+    const otDisplay = (isAbsent || isHoliday || isOTLeave) ? '—'
       : rec.otMinutes > 0
         ? `<span class="badge badge-warning">${minutesToHm(rec.otMinutes)}</span>`
         : '<span class="badge badge-gray">None</span>';
 
     // USE button
-    const canUseOT = rec.otMinutes > 0 && !isAbsent && !isHoliday;
+    const canUseOT = rec.otMinutes > 0 && !isAbsent && !isHoliday && !isOTLeave;
     const useBtn = canUseOT
       ? `<button class="btn btn-sm ${isUsed ? 'btn-success' : 'btn-primary'} btn-fixed-w"
-           onclick="event.stopPropagation();toggleUse('${rec.id}')"
+           onclick="event.stopPropagation();${isUsed ? `undoUse('${rec.id}')` : `openUseModal('${rec.id}')`}"
            title="${isUsed ? 'Click to undo use' : 'Use this OT'}">
            ${isUsed ? 'USED' : 'USE'}</button>`
       : `<span class="badge badge-gray" style="min-width:54px;justify-content:center">N/A</span>`;
@@ -314,7 +325,7 @@ function renderTable() {
     </tr>`;
   }).join('');
 
-  renderPagination(allRecords.length);
+    renderPagination(filteredRecords.length);
 }
 
 function renderPagination(total) {
@@ -345,8 +356,11 @@ function renderPagination(total) {
     </div>`;
 }
 
+// ── Filter ────────────────────────────────────
+
 function goPage(p) {
-  const totalPages = Math.ceil(allRecords.length / ROWS_PER_PAGE);
+  const filtered   = getFilteredTableRecords();
+  const totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE);
   currentPage = Math.max(1, Math.min(p, totalPages));
   renderTable();
   const tw = document.querySelector('.table-wrap');
@@ -355,32 +369,386 @@ function goPage(p) {
 
 // ── Stats ────────────────────────────────────
 function renderStats() {
-  const now      = getManilaDate();
-  const prefix   = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const totalOT  = allRecords.filter(r => r.date.startsWith(prefix)).reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const usedOT   = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const allOT    = allRecords.reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const absences = allRecords.filter(r => r.status === 'absent').length;
+  const workHours = getWorkdayHours();
+  const usedOT    = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
+  const allOT     = allRecords.reduce((s, r) => s + (r.otMinutes || 0), 0);
+  const remOT     = allOT - usedOT;
+  const absences  = allRecords.filter(r => r.status === 'absent').length;
+
+  // Leave days earned = remaining OT ÷ work hours per day
+  const leaveDays = workHours > 0 ? (remOT / 60 / workHours) : 0;
+  const wholeDays = Math.floor(leaveDays);
+  const remHours  = Math.round((leaveDays - wholeDays) * workHours * 10) / 10;
+  let leaveDisplay = '—';
+  if (workHours > 0) {
+    leaveDisplay = wholeDays > 0
+      ? `${wholeDays}d${remHours > 0 ? ` ${remHours}h` : ''}`
+      : remOT > 0 ? `${(remOT/60).toFixed(1)}h` : '0d';
+  }
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  set('stat-ot-month', minutesToHm(totalOT));
-  set('stat-ot-used',  minutesToHm(usedOT));
-  set('stat-ot-rem',   minutesToHm(allOT - usedOT));
-  set('stat-absences', absences);
+  set('stat-leave-days', leaveDisplay);
+  set('stat-ot-used',    minutesToHm(usedOT));
+  set('stat-ot-rem',     minutesToHm(remOT));
+  set('stat-absences',   absences);
 }
 
-// ── Toggle OT Used ───────────────────────────
-async function toggleUse(id) {
+function getWorkdayHours() {
+  const s = timeInputToHm(userSettings.workStart || '08:00');
+  const e = timeInputToHm(userSettings.workEnd   || '17:00');
+  if (!s || !e) return 8;
+  return ((e.h * 60 + e.m) - (s.h * 60 + s.m)) / 60;
+}
+
+// ── USE OT Modal ─────────────────────────────
+let useModalRecordId = null;
+
+function openUseModal(id) {
   const rec = allRecords.find(r => r.id === id);
   if (!rec) return;
-  const newVal = !rec.otUsed;
+  useModalRecordId = id;
+
+  const allOT  = allRecords.reduce((s, r) => s + (r.otMinutes || 0), 0);
+  const usedOT = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
+  const remOT  = allOT - usedOT;
+
+  document.getElementById('use-modal-date').textContent  = formatDateLong(rec.date);
+  document.getElementById('use-modal-avail').textContent = minutesToHm(remOT);
+  document.getElementById('use-leave-date').value        = getDateKey();
+  document.getElementById('use-type').value              = 'leave';
+  document.getElementById('use-hours').value             = '';
+  document.getElementById('use-note').value              = '';
+  handleUseTypeChange();
+  openModal('use-modal');
+}
+
+function handleUseTypeChange() {
+  const type = document.getElementById('use-type')?.value;
+  const hg   = document.getElementById('use-hours-group');
+  const hint = document.getElementById('use-hours-hint');
+  const wh   = getWorkdayHours();
+  if (type === 'leave') {
+    if (hg)   hg.style.display = 'none';
+  } else if (type === 'halfday') {
+    if (hg)   hg.style.display = 'block';
+    if (hint) hint.textContent = `Half day = ${wh/2}h. Enter hours to deduct (auto: ${wh/2}).`;
+    const hoursEl = document.getElementById('use-hours');
+    if (hoursEl && !hoursEl.value) hoursEl.value = (wh / 2).toFixed(2);
+  } else {
+    if (hg)   hg.style.display = 'block';
+    if (hint) hint.textContent = 'Enter how many OT hours to deduct for late/undertime.';
+    const hoursEl = document.getElementById('use-hours');
+    if (hoursEl) hoursEl.value = '';
+  }
+}
+
+async function confirmUseOT() {
+  const rec = allRecords.find(r => r.id === useModalRecordId);
+  if (!rec) return;
+  const type      = document.getElementById('use-type').value;
+  const leaveDate = document.getElementById('use-leave-date').value;
+  const note      = document.getElementById('use-note').value.trim();
+  const wh        = getWorkdayHours();
+
+  let deductMins = 0;
+  let usageLabel = '';
+  if (type === 'leave') {
+    deductMins = Math.round(wh * 60);
+    usageLabel = 'FL-OT';
+  } else if (type === 'halfday') {
+    const h = parseFloat(document.getElementById('use-hours').value) || wh / 2;
+    deductMins = Math.round(h * 60);
+    usageLabel = 'HD-OT';
+  } else {
+    const h = parseFloat(document.getElementById('use-hours').value);
+    if (!h || h <= 0) { showToast('Please enter hours to deduct.', 'error'); return; }
+    deductMins = Math.round(h * 60);
+    usageLabel = 'LATE-OT';
+  }
+
+  if (!leaveDate) { showToast('Please select a leave date.', 'error'); return; }
+
+  const btn = document.getElementById('btn-confirm-use');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
   try {
-    await db.collection('users').doc(currentUser.uid).collection('attendance').doc(id).update({ otUsed: newVal });
-    showToast(newVal ? 'OT marked as Used ✓' : 'OT use undone', newVal ? 'success' : 'default');
+    const batch = db.batch();
+
+    // 1) Mark the OT source record as used
+    const otRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(useModalRecordId);
+    batch.update(otRef, {
+      otUsed:      true,
+      otUsageType: usageLabel,
+      otUsageDate: leaveDate,
+      otUsageMins: deductMins,
+      otUsageNote: note,
+      otLeaveRecordId: leaveDate, // track which attendance date was created
+    });
+
+    // 2) Create/update the attendance record for the leave date with OT-L status
+    // (only create it if the leave date isn't today — today is already auto-created as pending)
+    const today = getDateKey();
+    const leaveRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(leaveDate);
+    const leaveSnap = await leaveRef.get();
+
+    const leaveData = {
+      date:           leaveDate,
+      status:         'ot-leave',
+      otUsageType:    usageLabel,
+      otUsageMins:    deductMins,
+      otUsageNote:    note,
+      otSourceId:     useModalRecordId,
+      timeOutStamp:   null,
+      timeOutDisplay: null,
+      workMinutes:    deductMins, // count it as work time
+      otMinutes:      0,
+      otUsed:         false,
+    };
+
+    if (!leaveSnap.exists) {
+      batch.set(leaveRef, {
+        ...leaveData,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Update the existing record to OT-L status
+      batch.update(leaveRef, {
+        status:         'ot-leave',
+        otUsageType:    usageLabel,
+        otUsageMins:    deductMins,
+        otUsageNote:    note,
+        otSourceId:     useModalRecordId,
+      });
+    }
+
+    await batch.commit();
+    showToast(`OT logged as ${usageLabel} ✓`, 'success');
+    closeModal('use-modal');
+    await loadRecords();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Confirm Use';
+  }
+}
+
+// ── Undo Use — confirm prompt ─────────────────
+let undoPendingId = null;
+
+function undoUse(id) {
+  undoPendingId = id;
+  const rec = allRecords.find(r => r.id === id);
+  if (!rec) return;
+  // Open record modal in confirm-undo mode
+  modalRecordId = id;
+  openModal('record-modal');
+  setModalMode('confirm-undo');
+}
+
+function renderConfirmUndoMode(rec, titleEl, bodyEl, footerEl) {
+  titleEl.textContent = 'Undo OT Use';
+  const leaveDate = rec.otUsageDate ? formatDateLong(rec.otUsageDate) : 'the recorded leave date';
+  bodyEl.innerHTML = `
+    <p style="font-size:.88rem;color:var(--text)">
+      Are you sure you want to undo this OT use? The leave record for <strong>${leaveDate}</strong>
+      will be removed from your attendance records and your OT hours will be restored.
+    </p>`;
+  footerEl.innerHTML = `
+    <button class="btn btn-ghost" onclick="setModalMode('view')">No, Keep It</button>
+    <button class="btn btn-danger" onclick="executeUndoUse('${rec.id}')">Yes, Undo</button>`;
+}
+
+async function executeUndoUse(id) {
+  const rec = allRecords.find(r => r.id === id);
+  if (!rec) return;
+  try {
+    const batch = db.batch();
+
+    // 1) Clear OT use flags from source record
+    const otRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(id);
+    batch.update(otRef, {
+      otUsed: false, otUsageType: null, otUsageDate: null,
+      otUsageMins: null, otUsageNote: null, otLeaveRecordId: null,
+    });
+
+    // 2) Remove or revert the leave date record
+    if (rec.otUsageDate) {
+      const leaveRef = db.collection('users').doc(currentUser.uid)
+                         .collection('attendance').doc(rec.otUsageDate);
+      const leaveSnap = await leaveRef.get();
+      if (leaveSnap.exists && leaveSnap.data().status === 'ot-leave') {
+        // If the record was auto-created by us, delete it entirely
+        if (!leaveSnap.data().hadExistingStatus) {
+          batch.delete(leaveRef);
+        } else {
+          // If it existed before, just revert status to pending
+          batch.update(leaveRef, {
+            status: 'pending', otUsageType: null, otUsageMins: null,
+            otSourceId: null, otUsageNote: null,
+          });
+        }
+      }
+    }
+
+    await batch.commit();
+    showToast('OT use undone. Leave record removed.', 'default');
+    closeModal('record-modal');
     await loadRecords();
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }
+}
+let activeFilters = {};
+
+function applyFilters() {
+  activeFilters = {
+    status:  document.getElementById('f-status').value,
+    dateFrom: document.getElementById('f-date-from').value,
+    dateTo:   document.getElementById('f-date-to').value,
+    otUse:    document.getElementById('f-ot-use').value,
+  };
+  closeModal('filter-modal');
+  currentPage = 1;
+  renderTable();
+  updateFilterBanner();
+}
+
+function clearFilters() {
+  activeFilters = {};
+  document.getElementById('f-status').value    = '';
+  document.getElementById('f-date-from').value = '';
+  document.getElementById('f-date-to').value   = '';
+  document.getElementById('f-ot-use').value    = '';
+  currentPage = 1;
+  renderTable();
+  updateFilterBanner();
+}
+
+function updateFilterBanner() {
+  const banner = document.getElementById('filter-banner');
+  const text   = document.getElementById('filter-banner-text');
+  const hasFilter = Object.values(activeFilters).some(v => v);
+  if (banner) banner.classList.toggle('hidden', !hasFilter);
+  if (text && hasFilter) {
+    const parts = [];
+    if (activeFilters.status)   parts.push(`Status: ${activeFilters.status}`);
+    if (activeFilters.dateFrom) parts.push(`From: ${activeFilters.dateFrom}`);
+    if (activeFilters.dateTo)   parts.push(`To: ${activeFilters.dateTo}`);
+    if (activeFilters.otUse)    parts.push(`OT: ${activeFilters.otUse}`);
+    text.textContent = parts.join(' · ');
+  }
+}
+
+function getFilteredTableRecords() {
+  return allRecords.filter(r => {
+    if (activeFilters.status   && r.status !== activeFilters.status) return false;
+    if (activeFilters.dateFrom && r.date < activeFilters.dateFrom)   return false;
+    if (activeFilters.dateTo   && r.date > activeFilters.dateTo)     return false;
+    if (activeFilters.otUse === 'used'    && !r.otUsed)              return false;
+    if (activeFilters.otUse === 'unused'  && r.otUsed)               return false;
+    if (activeFilters.otUse === 'has-ot'  && !(r.otMinutes > 0))     return false;
+    return true;
+  });
+}
+
+// ── Export ────────────────────────────────────
+function openExportModal() {
+  const now = getManilaDate();
+  document.getElementById('export-month').value = now.getMonth() + 1;
+  document.getElementById('export-year').value  = now.getFullYear();
+  openModal('export-modal');
+}
+
+async function doExport() {
+  const month  = parseInt(document.getElementById('export-month').value);
+  const year   = parseInt(document.getElementById('export-year').value);
+  const fmt    = document.querySelector('input[name="export-fmt"]:checked')?.value || 'csv';
+  const prefix = `${year}-${String(month).padStart(2,'0')}`;
+  const recs   = allRecords.filter(r => r.date.startsWith(prefix));
+  const mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthName = mNames[month - 1];
+
+  const statusLabel = r => {
+    if (r.status === 'ot-leave')     return r.otUsageType || 'OT-L';
+    if (r.status === 'absent')       return 'ABS';
+    if (r.status === 'holiday')      return 'HOL';
+    if (r.otUsageType === 'FL-OT')   return 'FL-OT';
+    if (r.otUsageType === 'HD-OT')   return 'HD-OT';
+    if (r.otUsageType === 'LATE-OT') return 'LATE-OT';
+    if (r.status === 'present')      return 'Present';
+    return 'Pending';
+  };
+
+  const present  = recs.filter(r => r.status === 'present').length;
+  const absent   = recs.filter(r => r.status === 'absent').length;
+  const holidays = recs.filter(r => r.status === 'holiday').length;
+  const totalOTMins = recs.reduce((s, r) => s + (r.otMinutes || 0), 0);
+
+  if (fmt === 'csv') {
+    const rows = [
+      [`OT Tracker — ${monthName} ${year}`],
+      [`Generated: ${getManilaDate().toLocaleDateString('en-PH')}`],
+      [`Present: ${present}`, `Absent: ${absent}`, `Holidays: ${holidays}`, `Total OT: ${minutesToHm(totalOTMins)}`],
+      [],
+      ['Date','Time Out','Status','Work Hours','Overtime','OT Used'],
+      ...recs.map(r => [
+        formatDateShort(r.date),
+        r.timeOutDisplay || (r.status==='absent'?'ABS':r.status==='holiday'?'HOL':'—'),
+        statusLabel(r),
+        r.workMinutes != null ? minutesToHm(r.workMinutes) : '—',
+        r.otMinutes > 0 ? minutesToHm(r.otMinutes) : '—',
+        r.otUsed ? (r.otUsageType || 'Used') : '—',
+      ])
+    ];
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `OT_Tracker_${monthName}_${year}.csv`; a.click();
+    showToast('CSV downloaded ✓', 'success');
+  } else {
+    // PDF via print-ready HTML
+    const html = `<!DOCTYPE html><html><head><title>OT Tracker — ${monthName} ${year}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #1E293B; padding: 20px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .meta { color: #64748B; font-size: 11px; margin-bottom: 16px; }
+  .summary { display: flex; gap: 24px; margin-bottom: 16px; }
+  .summary div { background: #F1F5F9; padding: 8px 14px; border-radius: 6px; }
+  .summary strong { display: block; font-size: 16px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  th { background: #1E293B; color: #fff; padding: 7px 10px; text-align: left; font-size: 11px; }
+  td { padding: 6px 10px; border-bottom: 1px solid #E2E8F0; font-size: 11px; }
+  tr:nth-child(even) td { background: #F8FAFC; }
+  .badge { padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+  .p { background: #ECFDF5; color: #10B981; } .a { background: #FEF2F2; color: #EF4444; }
+  .h { background: #EDE9FE; color: #7C3AED; } .ot { background: #FFFBEB; color: #F59E0B; }
+</style></head><body>
+<h1>OT Tracker — ${monthName} ${year}</h1>
+<div class="meta">Exported: ${getManilaDate().toLocaleDateString('en-PH', {weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+<div class="summary">
+  <div><strong>${present}</strong>Days Present</div>
+  <div><strong>${absent}</strong>Days Absent</div>
+  <div><strong>${holidays}</strong>Holidays</div>
+  <div><strong>${minutesToHm(totalOTMins)}</strong>Total OT</div>
+</div>
+<table>
+<tr><th>Date</th><th>Time Out</th><th>Status</th><th>Work Hours</th><th>Overtime</th><th>OT Used</th></tr>
+${recs.map(r => `<tr>
+  <td>${formatDateShort(r.date)}</td>
+  <td>${r.timeOutDisplay || (r.status==='absent'?'ABS':r.status==='holiday'?'HOL':'—')}</td>
+  <td><span class="badge ${r.status==='present'?'p':r.status==='absent'?'a':r.status==='holiday'?'h':''}">${statusLabel(r)}</span></td>
+  <td>${r.workMinutes != null ? minutesToHm(r.workMinutes) : '—'}</td>
+  <td>${r.otMinutes > 0 ? `<span class="badge ot">${minutesToHm(r.otMinutes)}</span>` : '—'}</td>
+  <td>${r.otUsed ? (r.otUsageType || 'Used') : '—'}</td>
+</tr>`).join('')}
+</table>
+</body></html>`;
+    const win = window.open('', '_blank');
+    win.document.write(html); win.document.close();
+    win.onload = () => { win.print(); };
+    showToast('PDF print dialog opened ✓', 'success');
+  }
+  closeModal('export-modal');
 }
 
 // ═══════════════════════════════════════════════
@@ -404,6 +772,8 @@ function setModalMode(mode) {
     renderEditMode(rec, titleEl, bodyEl, footerEl);
   } else if (mode === 'confirm-delete') {
     renderConfirmDeleteMode(rec, titleEl, bodyEl, footerEl);
+  } else if (mode === 'confirm-undo') {
+    renderConfirmUndoMode(rec, titleEl, bodyEl, footerEl);
   }
 }
 
@@ -412,9 +782,9 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
   const today = getDateKey();
   const isAbsent    = rec.status === 'absent';
   const isHoliday   = rec.status === 'holiday';
+  const isOTLeave   = rec.status === 'ot-leave';
   const isPresent   = rec.status === 'present';
-  const isPending   = rec.status === 'pending';
-  const notTimedOut = !rec.timeOutStamp && !isAbsent && !isHoliday;
+  const notTimedOut = !rec.timeOutStamp && !isAbsent && !isHoliday && !isOTLeave;
   const isToday     = rec.id === today;
   const { workStart, workEnd } = getEffectiveWorkHours(rec.id);
 
@@ -435,12 +805,14 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
   let statusBadge;
   if (isAbsent)       statusBadge = `<span class="badge badge-danger">Absent</span>`;
   else if (isHoliday) statusBadge = `<span class="badge badge-holiday">Holiday</span>`;
+  else if (isOTLeave) statusBadge = `<span class="badge badge-ot-leave">${rec.otUsageType || 'OT-L'}</span>`;
   else if (isPresent) statusBadge = `<span class="badge badge-success">Present</span>`;
   else                statusBadge = `<span class="badge badge-gray">Pending</span>`;
 
   let timeOutValue = rec.timeOutDisplay || '—';
-  if (isAbsent)   timeOutValue = 'ABS';
-  if (isHoliday)  timeOutValue = 'HOL';
+  if (isAbsent)  timeOutValue = 'ABS';
+  if (isHoliday) timeOutValue = 'HOL';
+  if (isOTLeave) timeOutValue = rec.otUsageType || 'OT-L';
 
   bodyEl.innerHTML = `
     <div style="display:grid;gap:.65rem">
@@ -472,6 +844,12 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
         <span class="text-sm" style="color:var(--text-light)">OT Used</span>
         <span class="badge ${rec.otUsed?'badge-success':'badge-gray'}">${rec.otUsed?'Yes':'No'}</span>
       </div>
+      ${isOTLeave && rec.otSourceId ? `
+      <div class="flex justify-between items-center">
+        <span class="text-sm" style="color:var(--text-light)">OT Source</span>
+        <span style="font-size:.78rem;color:var(--text-light)">${formatDateShort(rec.otSourceId)}</span>
+      </div>` : ''}
+      ${rec.otUsageNote ? `<div style="margin-top:.25rem;padding:.6rem .8rem;background:var(--bg);border-radius:7px;font-size:.82rem;color:var(--text-light)">${rec.otUsageNote}</div>` : ''}
       ${rec.note ? `<div style="margin-top:.25rem;padding:.6rem .8rem;background:var(--bg);border-radius:7px;font-size:.82rem">${rec.note}</div>` : ''}
       ${showStatusBtns ? `
         <div style="border-top:1px solid var(--border);padding-top:.75rem;margin-top:.25rem">
