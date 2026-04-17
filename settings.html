@@ -4,6 +4,11 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>OT Tracker — Settings</title>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="OT Tracker"/>
+  <link rel="apple-touch-icon" href="OTracker-logo.png"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -23,6 +28,7 @@
       <a class="nav-item" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
       <a class="nav-item" href="attendance.html"><span class="nav-icon">🗓</span> Attendance</a>
       <a class="nav-item" href="overtime.html"><span class="nav-icon">⏰</span> Overtime</a>
+      <a class="nav-item" href="schedule.html"><span class="nav-icon">📅</span> Schedule</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item active" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
@@ -47,6 +53,19 @@
         <span class="page-title">Settings</span>
       </div>
       <div class="topbar-right">
+                <div class="notif-bell-wrap">
+          <button class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
+            🔔<span class="notif-dot hidden" id="notif-dot"></span>
+          </button>
+          <!-- Notification Dropdown (Facebook-style) -->
+          <div class="notif-dropdown hidden" id="notif-dropdown">
+            <div class="notif-dropdown-header">
+              <span class="notif-dropdown-title">Notifications</span>
+              <button class="notif-clear-all btn btn-ghost btn-sm" onclick="clearAllNotifications()">Clear all</button>
+            </div>
+            <div class="notif-dropdown-list"></div>
+          </div>
+        </div>
         <div class="live-clock-wrap">
           <div class="live-clock-time" id="clock-time">—</div>
           <div class="live-clock-date" id="clock-date">—</div>
@@ -55,64 +74,19 @@
     </div>
 
     <div class="page-content">
-      <div class="settings-layout">
 
-        <!-- Settings Nav -->
+      <!-- ── Profile + Security — Tab layout ── -->
+      <div class="settings-layout">
         <div class="settings-nav">
-          <button class="settings-nav-item active" data-panel="panel-schedule">📅 Schedule</button>
-          <button class="settings-nav-item" data-panel="panel-profile">👤 Profile</button>
+          <button class="settings-nav-item active" data-panel="panel-profile">👤 Profile</button>
+          <button class="settings-nav-item" data-panel="panel-notifications">🔔 Notifications</button>
           <button class="settings-nav-item" data-panel="panel-security">🔒 Security</button>
         </div>
 
-        <!-- Settings Panels -->
-        <div>
-
-          <!-- Schedule Panel -->
-          <div class="card settings-panel active" id="panel-schedule">
-            <div class="card-body">
-              <div class="settings-section-title">Work Schedule</div>
-              <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
-                Set your official working hours. The overtime counter activates when this period ends and you haven't timed out yet.
-              </p>
-
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Work Start Time</label>
-                  <input class="form-control" type="time" id="s-work-start" value="08:00"/>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Work End Time</label>
-                  <input class="form-control" type="time" id="s-work-end" value="17:00"/>
-                </div>
-              </div>
-              <div class="form-hint" id="work-hours-preview" style="margin-top:-.5rem;margin-bottom:1rem;font-size:.8rem;color:var(--primary)"></div>
-
-              <div class="form-group">
-                <label class="form-label">Grace Period (minutes)</label>
-                <input class="form-control" type="number" id="s-grace" min="0" max="60" value="5" style="max-width:120px"/>
-                <div class="form-hint">How many minutes after work end before OT counter starts. Set 0 for immediate.</div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Working Days</label>
-                <div class="days-grid">
-                  <input class="day-check" type="checkbox" id="day-0" value="0"/><label class="day-label" for="day-0">Su</label>
-                  <input class="day-check" type="checkbox" id="day-1" value="1" checked/><label class="day-label" for="day-1">Mo</label>
-                  <input class="day-check" type="checkbox" id="day-2" value="2" checked/><label class="day-label" for="day-2">Tu</label>
-                  <input class="day-check" type="checkbox" id="day-3" value="3" checked/><label class="day-label" for="day-3">We</label>
-                  <input class="day-check" type="checkbox" id="day-4" value="4" checked/><label class="day-label" for="day-4">Th</label>
-                  <input class="day-check" type="checkbox" id="day-5" value="5" checked/><label class="day-label" for="day-5">Fr</label>
-                  <input class="day-check" type="checkbox" id="day-6" value="6"/><label class="day-label" for="day-6">Sa</label>
-                </div>
-                <div class="form-hint mt-1">Only selected days will auto-create attendance rows.</div>
-              </div>
-
-              <button class="btn btn-primary" id="btn-save-schedule">Save Schedule</button>
-            </div>
-          </div>
+        <div style="min-width:0">
 
           <!-- Profile Panel -->
-          <div class="card settings-panel" id="panel-profile">
+          <div class="card settings-panel active" id="panel-profile">
             <div class="card-body">
               <div class="settings-section-title">Profile Information</div>
               <div class="form-group">
@@ -129,6 +103,56 @@
                 <input class="form-control" type="text" id="s-department" placeholder="e.g. Engineering"/>
               </div>
               <button class="btn btn-primary" id="btn-save-profile">Save Profile</button>
+            </div>
+          </div>
+
+          <!-- Notifications Panel -->
+          <div class="card settings-panel" id="panel-notifications">
+            <div class="card-body">
+              <div class="settings-section-title">Notification Preferences</div>
+              <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
+                Customize when and how often the app notifies you about your shift, overtime, and time-out reminders.
+              </p>
+
+              <div class="form-group">
+                <label class="form-label">Notify me before shift starts</label>
+                <div style="display:flex;align-items:center;gap:.5rem">
+                  <input class="form-control" type="number" id="n-shift-warn-mins" min="0" max="120" step="1" value="5" style="max-width:90px"/>
+                  <span style="font-size:.82rem;color:var(--text-light)">minutes before</span>
+                </div>
+                <div class="form-hint">Set 0 to disable the early warning. Max 120 minutes.</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Remind me about unused OT hours</label>
+                <select class="form-control" id="n-ot-remind-freq" style="max-width:200px">
+                  <option value="never">Never</option>
+                  <option value="hourly">Every hour (after work ends)</option>
+                  <option value="daily" selected>Once a day</option>
+                  <option value="weekly">Once a week</option>
+                </select>
+                <div class="form-hint">How often to remind you when you have OT hours available to use as leave.</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Remind me if I haven't timed out</label>
+                <select class="form-control" id="n-timeout-remind-freq" style="max-width:200px">
+                  <option value="never">Never</option>
+                  <option value="30">Every 30 minutes</option>
+                  <option value="60" selected>Every hour</option>
+                  <option value="120">Every 2 hours</option>
+                  <option value="custom">Custom interval…</option>
+                </select>
+                <div class="form-group" id="n-timeout-custom-group" class="hidden" style="display:none;margin-top:.5rem">
+                  <div style="display:flex;align-items:center;gap:.5rem">
+                    <input class="form-control" type="number" id="n-timeout-custom-mins" min="10" max="480" step="5" value="60" style="max-width:90px"/>
+                    <span style="font-size:.82rem;color:var(--text-light)">minutes</span>
+                  </div>
+                </div>
+                <div class="form-hint">Reminder frequency after shift ends if you haven't pressed Time Out yet.</div>
+              </div>
+
+              <button class="btn btn-primary" id="btn-save-notifications">Save Notification Settings</button>
             </div>
           </div>
 
@@ -154,6 +178,7 @@
 
         </div>
       </div>
+
     </div>
   </main>
 </div>
@@ -165,6 +190,15 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="utils.js"></script>
+<script src="notifications.js"></script>
 <script src="settings.js"></script>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
+// Show/hide custom timeout interval input
+document.getElementById('n-timeout-remind-freq').addEventListener('change', function() {
+  const grp = document.getElementById('n-timeout-custom-group');
+  grp.style.display = this.value === 'custom' ? 'block' : 'none';
+});
+</script>
 </body>
 </html>
