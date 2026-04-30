@@ -2,12 +2,10 @@
 // dashboard.js — Main attendance tracking logic
 // =============================================
 
-const ROWS_PER_PAGE = 10;
 let currentUser   = null;
 let userSettings  = null;
 let allRecords    = [];
 let editingId     = null;
-let currentPage   = 1;
 let customWorkHours = {};
 
 // Current record open in the unified modal
@@ -233,7 +231,7 @@ function formatDateLong(dateKey) {
   return date.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-// ── Render Table with Pagination ─────────────
+// ── Render Table (all records, no pagination) ──
 function renderTable() {
   const tbody = document.getElementById('records-tbody');
   const today = getDateKey();
@@ -246,16 +244,11 @@ function renderTable() {
         <div class="empty-icon">📋</div>
         <p>${Object.values(activeFilters).some(v=>v) ? 'No records match your filters.' : 'No records yet. Your attendance will appear here daily.'}</p>
       </div></td></tr>`;
-    renderPagination(0);
+    updateRecordCount(0);
     return;
   }
 
-  const totalPages = Math.ceil(filteredRecords.length / ROWS_PER_PAGE);
-  if (currentPage > totalPages) currentPage = totalPages;
-  const start    = (currentPage - 1) * ROWS_PER_PAGE;
-  const pageRecs = filteredRecords.slice(start, start + ROWS_PER_PAGE);
-
-  tbody.innerHTML = pageRecs.map(rec => {
+  tbody.innerHTML = filteredRecords.map(rec => {
     const isToday     = rec.id === today;
     const isAbsent    = rec.status === 'absent';
     const isHoliday   = rec.status === 'holiday';
@@ -325,46 +318,18 @@ function renderTable() {
     </tr>`;
   }).join('');
 
-    renderPagination(filteredRecords.length);
+  updateRecordCount(filteredRecords.length);
 }
 
-function renderPagination(total) {
+function updateRecordCount(total) {
   const bar = document.getElementById('pagination-bar');
   if (!bar) return;
   if (total === 0) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
-
-  const totalPages = Math.ceil(total / ROWS_PER_PAGE);
-  const start = Math.min((currentPage - 1) * ROWS_PER_PAGE + 1, total);
-  const end   = Math.min(currentPage * ROWS_PER_PAGE, total);
-
-  bar.innerHTML = `
-    <div class="pagination-info">
-      <span class="pag-full">Showing ${start}–${end} of ${total} records</span>
-      <span class="pag-short">${start}–${end} of ${total}</span>
-    </div>
-    <div class="pagination-controls">
-      <button class="btn btn-sm btn-ghost" onclick="goPage(1)" ${currentPage===1?'disabled':''}>«</button>
-      <button class="btn btn-sm btn-ghost" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>
-        <span class="pag-full">‹ Prev</span><span class="pag-short">&lt;</span>
-      </button>
-      <span style="font-size:.78rem;color:var(--text-light);padding:0 .25rem">Page ${currentPage} / ${totalPages}</span>
-      <button class="btn btn-sm btn-ghost" onclick="goPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>
-        <span class="pag-full">Next ›</span><span class="pag-short">&gt;</span>
-      </button>
-      <button class="btn btn-sm btn-ghost" onclick="goPage(${totalPages})" ${currentPage===totalPages?'disabled':''}>»</button>
-    </div>`;
-}
-
-// ── Filter ────────────────────────────────────
-
-function goPage(p) {
-  const filtered   = getFilteredTableRecords();
-  const totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE);
-  currentPage = Math.max(1, Math.min(p, totalPages));
-  renderTable();
-  const tw = document.querySelector('.table-wrap');
-  if (tw) tw.scrollTop = 0;
+  const filtered = Object.values(activeFilters).some(v => v);
+  bar.innerHTML = `<div class="pagination-info">
+    <span>${total} record${total !== 1 ? 's' : ''}${filtered ? ' (filtered)' : ''}</span>
+  </div>`;
 }
 
 // ── Stats ────────────────────────────────────
@@ -398,6 +363,21 @@ function getWorkdayHours() {
   const e = timeInputToHm(userSettings.workEnd   || '17:00');
   if (!s || !e) return 8;
   return ((e.h * 60 + e.m) - (s.h * 60 + s.m)) / 60;
+}
+
+// Apply the company's OT counting rule to raw overtime minutes
+function applyOTRule(rawOTMins) {
+  const rule = userSettings.otCountingRule || { startRule: 'immediate', delayMins: 0, incrementMins: 1 };
+  if (rawOTMins <= 0) return 0;
+  if (rule.startRule === 'immediate') return rawOTMins;
+
+  // after-delay mode
+  const delay = rule.delayMins || 0;
+  const incr  = rule.incrementMins || 1;
+  if (rawOTMins < delay) return 0;              // hasn't reached OT threshold yet
+  const afterDelay = rawOTMins - delay;
+  // Round down to nearest increment
+  return delay + Math.floor(afterDelay / incr) * incr;
 }
 
 // ── USE OT Modal ─────────────────────────────
@@ -608,7 +588,6 @@ function applyFilters() {
     otUse:    document.getElementById('f-ot-use').value,
   };
   closeModal('filter-modal');
-  currentPage = 1;
   renderTable();
   updateFilterBanner();
 }
@@ -619,7 +598,6 @@ function clearFilters() {
   document.getElementById('f-date-from').value = '';
   document.getElementById('f-date-to').value   = '';
   document.getElementById('f-ot-use').value    = '';
-  currentPage = 1;
   renderTable();
   updateFilterBanner();
 }
@@ -998,7 +976,8 @@ function recalcEditModal() {
   const sMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
   const eMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
   const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
-  const otMins   = Math.max(0, Math.round((toMs - eMs) / 60_000));
+  const otMinsRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
+  const otMins   = applyOTRule(otMinsRaw);
   if (workEl) workEl.textContent = minutesToHm(workMins);
   if (otEl)   otEl.textContent   = otMins > 0 ? minutesToHm(otMins) : 'None';
 }
@@ -1031,7 +1010,8 @@ async function saveEditFromModal() {
       const sMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
       const eMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
       workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
-      otMins   = Math.max(0, Math.round((toMs - eMs) / 60_000));
+      const _otRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
+      otMins   = applyOTRule(_otRaw);
     }
   }
 
@@ -1145,7 +1125,8 @@ async function confirmPresentTimeout(id) {
   const sMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
   const eMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
   const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
-  const otMins   = Math.max(0, Math.round((toMs - eMs) / 60_000));
+  const otMinsRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
+  const otMins   = applyOTRule(otMinsRaw);
 
   try {
     await db.collection('users').doc(currentUser.uid).collection('attendance').doc(id)
@@ -1229,7 +1210,8 @@ function recalcModalOT() {
   const sMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
   const eMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
   const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
-  const otMins   = Math.max(0, Math.round((toMs - eMs) / 60_000));
+  const otMinsRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
+  const otMins   = applyOTRule(otMinsRaw);
   if (workEl) workEl.textContent = minutesToHm(workMins);
   if (otEl)   otEl.textContent   = otMins > 0 ? minutesToHm(otMins) : 'None';
 }
@@ -1257,7 +1239,8 @@ async function saveRecord() {
       const sMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
       const eMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
       workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
-      otMins   = Math.max(0, Math.round((toMs - eMs) / 60_000));
+      const _otRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
+      otMins   = applyOTRule(_otRaw);
     }
   }
 
