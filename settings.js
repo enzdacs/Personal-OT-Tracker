@@ -43,10 +43,36 @@ document.addEventListener('DOMContentLoaded', () => {
     await auth.signOut();
     window.location.href = 'index.html';
   });
+
+  // Mark dirty when profile fields change
+  ['s-full-name','s-username','s-department'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', markProfileDirty);
+  });
+
+  // Mark dirty when notification fields change
+  ['n-shift-warn-mins','n-ot-remind-freq','n-timeout-remind-freq','n-timeout-custom-mins'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.addEventListener('input', markNotifDirty); el.addEventListener('change', markNotifDirty); }
+  });
 });
 
 let currentUser  = null;
 let userSettings = null;
+let _profileDirty = false;
+let _notifDirty   = false;
+
+function markProfileDirty() {
+  _profileDirty = true;
+  const btn = document.getElementById('btn-save-profile');
+  if (btn) btn.disabled = false;
+}
+
+function markNotifDirty() {
+  _notifDirty = true;
+  const btn = document.getElementById('btn-save-notifications');
+  if (btn) btn.disabled = false;
+}
 
 function updateSidebarUser() {
   const name = userSettings.fullName || currentUser.email;
@@ -76,6 +102,14 @@ function populateForm() {
   // Show/hide custom group based on current value
   const grp = document.getElementById('n-timeout-custom-group');
   if (grp && toFreqEl) grp.style.display = toFreqEl.value === 'custom' ? 'block' : 'none';
+
+  // Disable save buttons until something changes
+  _profileDirty = false;
+  _notifDirty   = false;
+  const profileBtn = document.getElementById('btn-save-profile');
+  const notifBtn   = document.getElementById('btn-save-notifications');
+  if (profileBtn) profileBtn.disabled = true;
+  if (notifBtn)   notifBtn.disabled   = true;
 }
 
 async function saveNotificationSettings() {
@@ -99,11 +133,13 @@ async function saveNotificationSettings() {
             .set({ notifSettings }, { merge: true });
     clearSettingsCache();
     userSettings = await getUserSettings(currentUser.uid);
+    _notifDirty = false;
     showToast('Notification settings saved ✓', 'success');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = 'Save Notification Settings';
+    if (!_notifDirty) btn.disabled = true;
   }
 }
 
@@ -124,11 +160,13 @@ async function saveProfile() {
     clearSettingsCache();
     userSettings = await getUserSettings(currentUser.uid);
     updateSidebarUser();
+    _profileDirty = false;
     showToast('Profile saved ✓', 'success');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = 'Save Profile';
+    if (!_profileDirty) btn.disabled = true;
   }
 }
 
