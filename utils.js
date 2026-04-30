@@ -156,6 +156,7 @@ async function getUserSettings(uid) {
         multiSchedule:  data.multiSchedule  || false,
         perDaySchedule: data.perDaySchedule || {},
         otToLeaveHours: data.otToLeaveHours || null,
+        otCountingRule: data.otCountingRule || { startRule: 'immediate', delayMins: 0, incrementMins: 1 },
         notifSettings:  data.notifSettings  || { shiftWarnMins: 5, otRemindFreq: 'daily', timeoutRemindFreq: '60' },
       };
     } else {
