@@ -181,8 +181,73 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Allow Enter key on inputs
-  document.querySelectorAll('.auth-input').forEach(input => {
+  // ── Forgot Password ─────────────────────────
+  const forgotModal    = document.getElementById('forgot-modal');
+  const forgotEmailEl  = document.getElementById('forgot-email');
+  const forgotSuccess  = document.getElementById('forgot-success');
+  const forgotError    = document.getElementById('forgot-error');
+
+  function openForgotModal() {
+    if (forgotEmailEl) forgotEmailEl.value = document.getElementById('login-email')?.value || '';
+    if (forgotSuccess) forgotSuccess.style.display = 'none';
+    if (forgotError)   forgotError.style.display   = 'none';
+    if (forgotModal)   forgotModal.style.display    = 'flex';
+  }
+
+  function closeForgotModal() {
+    if (forgotModal) forgotModal.style.display = 'none';
+  }
+
+  document.getElementById('btn-forgot-password')?.addEventListener('click', openForgotModal);
+  document.getElementById('btn-forgot-cancel')?.addEventListener('click',  closeForgotModal);
+
+  // Close modal when clicking backdrop
+  forgotModal?.addEventListener('click', e => {
+    if (e.target === forgotModal) closeForgotModal();
+  });
+
+  document.getElementById('btn-forgot-send')?.addEventListener('click', async () => {
+    const email = forgotEmailEl?.value.trim();
+    if (forgotSuccess) forgotSuccess.style.display = 'none';
+    if (forgotError)   forgotError.style.display   = 'none';
+
+    if (!email) {
+      if (forgotError) { forgotError.textContent = 'Please enter your email address.'; forgotError.style.display = 'block'; }
+      return;
+    }
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!validEmail) {
+      if (forgotError) { forgotError.textContent = 'Please enter a valid email address.'; forgotError.style.display = 'block'; }
+      return;
+    }
+
+    const btn = document.getElementById('btn-forgot-send');
+    btn.disabled = true; btn.textContent = 'Sending…';
+
+    try {
+      await auth.sendPasswordResetEmail(email);
+      if (forgotSuccess) forgotSuccess.style.display = 'block';
+      // Auto-close after 4 seconds
+      setTimeout(closeForgotModal, 4000);
+    } catch(e) {
+      const map = {
+        'auth/user-not-found':  'No account found with that email address.',
+        'auth/invalid-email':   'Please enter a valid email address.',
+        'auth/too-many-requests': 'Too many attempts. Please try again later.',
+      };
+      if (forgotError) {
+        forgotError.textContent = map[e.code] || 'Could not send reset email. Please try again.';
+        forgotError.style.display = 'block';
+      }
+    } finally {
+      btn.disabled = false; btn.textContent = 'Send Reset Link';
+    }
+  });
+
+  // Allow Enter key in forgot email field
+  forgotEmailEl?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btn-forgot-send')?.click();
+  });
     input.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
       const panel = input.closest('.auth-panel').id;
@@ -190,4 +255,3 @@ document.addEventListener('DOMContentLoaded', () => {
       else document.getElementById('btn-signup').click();
     });
   });
-});
