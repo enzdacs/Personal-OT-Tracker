@@ -131,7 +131,39 @@
             <div class="form-hint">Auto-computed from your work start &amp; end times. Updates as you change your schedule.</div>
           </div>
 
-          <button class="btn btn-primary" id="btn-save-schedule">Save Schedule</button>
+          <div class="form-group" style="margin-top:1.25rem">
+            <div class="settings-section-title" style="font-size:.85rem;margin-bottom:.75rem">⏱ OT Counting Condition</div>
+            <p class="text-sm" style="color:var(--text-light);margin-bottom:1rem">
+              Set how your company counts overtime. Different companies have different rules.
+            </p>
+
+            <div class="form-group">
+              <label class="form-label">When does OT counting start?</label>
+              <select class="form-control" id="s-ot-start-rule" onchange="handleOTRuleChange()" style="max-width:320px">
+                <option value="immediate">Immediately after work ends</option>
+                <option value="after-delay">After a delay (e.g. OT starts after 1 hr)</option>
+              </select>
+              <div class="form-hint">Select how your company determines when OT begins.</div>
+            </div>
+
+            <div id="ot-delay-block" class="hidden" style="background:var(--bg);border-radius:8px;padding:.85rem;border:1px solid var(--border);margin-top:.5rem">
+              <div class="form-row">
+                <div class="form-group" style="margin-bottom:0">
+                  <label class="form-label" style="font-size:.78rem">OT starts after (minutes)</label>
+                  <input class="form-control" type="number" id="s-ot-delay-mins" min="1" max="480" step="1" value="60" style="max-width:110px"/>
+                  <div class="form-hint">e.g. 60 = OT begins 1 hr after shift end</div>
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                  <label class="form-label" style="font-size:.78rem">Then count per (minutes)</label>
+                  <input class="form-control" type="number" id="s-ot-increment-mins" min="1" max="60" step="1" value="30" style="max-width:110px"/>
+                  <div class="form-hint">e.g. 30 = round down to nearest 30 min after delay</div>
+                </div>
+              </div>
+              <div style="margin-top:.65rem;padding:.55rem .75rem;background:var(--primary-light);border-radius:6px;border:1px solid #BFDBFE;font-size:.78rem;color:var(--primary)" id="ot-rule-preview"></div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="btn-save-schedule" disabled>Save Schedule</button>
         </div>
       </div>
     </div>
