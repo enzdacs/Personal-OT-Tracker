@@ -39,16 +39,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-save-profile').addEventListener('click', saveProfile);
   document.getElementById('btn-change-pass').addEventListener('click',  changePassword);
   document.getElementById('btn-save-notifications').addEventListener('click', saveNotificationSettings);
-  document.getElementById('btn-logout').addEventListener('click', async () => {
-    await auth.signOut();
-    window.location.href = 'index.html';
-  });
+  document.getElementById('btn-logout').addEventListener('click', confirmAndSignOut);
 
   // Mark dirty when profile fields change
-  ['s-full-name','s-username','s-department'].forEach(id => {
+  ['s-full-name','s-username','s-company-name','s-job-position','s-required-render-hours'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', markProfileDirty);
   });
+  const userTypeEl = document.getElementById('s-user-type');
+  if (userTypeEl) userTypeEl.addEventListener('change', markProfileDirty);
 
   // Mark dirty when notification fields change
   ['n-shift-warn-mins','n-ot-remind-freq','n-timeout-remind-freq','n-timeout-custom-mins'].forEach(id => {
@@ -77,15 +76,24 @@ function markNotifDirty() {
 function updateSidebarUser() {
   const name = userSettings.fullName || currentUser.email;
   document.getElementById('sidebar-username').textContent = name;
-  document.getElementById('sidebar-dept').textContent     = userSettings.department || 'Employee';
+  document.getElementById('sidebar-dept').textContent     = userSettings.jobPosition || userSettings.department || 'Employee';
   document.getElementById('sidebar-avatar').textContent   = getInitials(name);
+}
+
+function handleUserTypeChange() {
+  const isIntern = document.getElementById('s-user-type')?.value === 'intern';
+  document.getElementById('render-hours-group')?.classList.toggle('hidden', !isIntern);
 }
 
 function populateForm() {
   const s = userSettings;
-  document.getElementById('s-full-name').value  = s.fullName   || '';
-  document.getElementById('s-username').value   = s.username   || '';
-  document.getElementById('s-department').value = s.department || '';
+  document.getElementById('s-full-name').value    = s.fullName     || '';
+  document.getElementById('s-username').value     = s.username     || '';
+  document.getElementById('s-company-name').value = s.companyName  || '';
+  document.getElementById('s-job-position').value = s.jobPosition  || s.department || '';
+  document.getElementById('s-user-type').value    = s.userType     || 'employee';
+  document.getElementById('s-required-render-hours').value = s.requiredRenderHours ?? '';
+  handleUserTypeChange();
 
   // Notification settings
   const ns = s.notifSettings || {};
@@ -144,9 +152,14 @@ async function saveNotificationSettings() {
 }
 
 async function saveProfile() {
-  const name     = document.getElementById('s-full-name').value.trim();
-  const username = document.getElementById('s-username').value.trim();
-  const dept     = document.getElementById('s-department').value.trim();
+  const name        = document.getElementById('s-full-name').value.trim();
+  const username    = document.getElementById('s-username').value.trim();
+  const companyName = document.getElementById('s-company-name').value.trim();
+  const jobPosition = document.getElementById('s-job-position').value.trim();
+  const userType     = document.getElementById('s-user-type').value || 'employee';
+  const requiredRenderHours = userType === 'intern'
+    ? (parseFloat(document.getElementById('s-required-render-hours').value) || 0)
+    : null;
 
   if (!name) { showToast('Full name is required.', 'error'); return; }
 
@@ -156,7 +169,7 @@ async function saveProfile() {
   try {
     await db.collection('users').doc(currentUser.uid)
             .collection('config').doc('settings')
-            .set({ fullName: name, username, department: dept }, { merge: true });
+            .set({ fullName: name, username, companyName, jobPosition, userType, requiredRenderHours }, { merge: true });
     clearSettingsCache();
     userSettings = await getUserSettings(currentUser.uid);
     updateSidebarUser();

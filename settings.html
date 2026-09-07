@@ -99,8 +99,25 @@
                 <div class="form-hint">This is the name shown in the dashboard greeting (e.g. "Hi, Juan").</div>
               </div>
               <div class="form-group">
-                <label class="form-label">Department / Team <span style="color:var(--text-light);font-weight:400">(optional)</span></label>
-                <input class="form-control" type="text" id="s-department" placeholder="e.g. Engineering"/>
+                <label class="form-label">Company Name <span style="color:var(--text-light);font-weight:400">(optional)</span></label>
+                <input class="form-control" type="text" id="s-company-name" placeholder="e.g. Acme Corp"/>
+                <div class="form-hint">Shown in your dashboard welcome card.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Job Position <span style="color:var(--text-light);font-weight:400">(optional)</span></label>
+                <input class="form-control" type="text" id="s-job-position" placeholder="e.g. Software Engineer Intern"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Employment Type</label>
+                <select class="form-control" id="s-user-type" style="max-width:200px" onchange="handleUserTypeChange()">
+                  <option value="employee">Employee</option>
+                  <option value="intern">Intern</option>
+                </select>
+              </div>
+              <div class="form-group hidden" id="render-hours-group">
+                <label class="form-label">Required Render Hours</label>
+                <input class="form-control" type="number" id="s-required-render-hours" min="0" step="1" placeholder="e.g. 500" style="max-width:160px"/>
+                <div class="form-hint">Total OJT/internship hours you need to complete. Your progress shows on the Dashboard.</div>
               </div>
               <button class="btn btn-primary" id="btn-save-profile" disabled>Save Profile</button>
             </div>
@@ -111,7 +128,7 @@
             <div class="card-body">
               <div class="settings-section-title">Notification Preferences</div>
               <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
-                Customize when and how often the app notifies you about your shift, overtime, and time-out reminders.
+                Choose how and when you get reminded.
               </p>
 
               <div class="form-group">
@@ -120,7 +137,7 @@
                   <input class="form-control" type="number" id="n-shift-warn-mins" min="0" max="120" step="1" value="5" style="max-width:90px"/>
                   <span style="font-size:.82rem;color:var(--text-light)">minutes before</span>
                 </div>
-                <div class="form-hint">Set 0 to disable the early warning. Max 120 minutes.</div>
+                <div class="form-hint">0 = off. Max 120 minutes.</div>
               </div>
 
               <div class="form-group">
@@ -131,7 +148,7 @@
                   <option value="daily" selected>Once a day</option>
                   <option value="weekly">Once a week</option>
                 </select>
-                <div class="form-hint">How often to remind you when you have OT hours available to use as leave.</div>
+                <div class="form-hint">How often to remind you about OT you can use as leave.</div>
               </div>
 
               <div class="form-group">
@@ -149,7 +166,7 @@
                     <span style="font-size:.82rem;color:var(--text-light)">minutes</span>
                   </div>
                 </div>
-                <div class="form-hint">Reminder frequency after shift ends if you haven't pressed Time Out yet.</div>
+                <div class="form-hint">How often to remind you after your shift ends.</div>
               </div>
 
               <button class="btn btn-primary" id="btn-save-notifications" disabled>Save Notification Settings</button>

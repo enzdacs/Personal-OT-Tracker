@@ -1,4 +1,4 @@
-const CACHE_NAME = 'otracker-v1.1';
+const CACHE_NAME = 'otracker-v1.3';
 const STATIC_FILES = [
   '/index.html', '/dashboard.html', '/attendance.html',
   '/overtime.html', '/schedule.html', '/settings.html',

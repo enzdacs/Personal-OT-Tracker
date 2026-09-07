@@ -44,23 +44,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Unified record modal close
   document.getElementById('record-modal-close').addEventListener('click', () => closeModal('record-modal'));
 
-  document.getElementById('btn-add-row').addEventListener('click', () => openAddModal());
+  document.getElementById('btn-add-row').addEventListener('click', () => openModal('add-choice-modal'));
   document.getElementById('btn-save-record').addEventListener('click', saveRecord);
   document.getElementById('btn-filter').addEventListener('click', () => openModal('filter-modal'));
   document.getElementById('btn-export').addEventListener('click', openExportModal);
   document.getElementById('btn-apply-filter').addEventListener('click', applyFilters);
   document.getElementById('btn-do-export').addEventListener('click', doExport);
   document.getElementById('btn-confirm-use').addEventListener('click', confirmUseOT);
+  document.getElementById('use-hours')?.addEventListener('input', () => { updateMinTimeOutHint(); validateUseForm(); });
+  document.getElementById('use-timein')?.addEventListener('input', updateMinTimeOutHint);
 
   // Onboarding modal buttons
   document.getElementById('btn-ob-save').addEventListener('click', saveOnboarding);
   document.getElementById('btn-ob-later').addEventListener('click', () => {
     closeModal('onboarding-modal');
   });
-  document.getElementById('btn-logout').addEventListener('click', async () => {
-    await auth.signOut();
-    window.location.href = 'index.html';
-  });
+  document.getElementById('btn-logout').addEventListener('click', confirmAndSignOut);
 
   // Auto-calc OT when timeout changes in add-modal
   document.getElementById('edit-timeout').addEventListener('input', recalcModalOT);
@@ -70,17 +69,45 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateSidebarUser() {
   const name     = userSettings.fullName || currentUser.email;
   const username = userSettings.username || name;
-  const dept     = userSettings.department || 'Employee';
+  const jobPosition = userSettings.jobPosition || userSettings.department || 'Employee';
+  const company  = userSettings.companyName || '';
   document.getElementById('sidebar-username').textContent = name;
-  document.getElementById('sidebar-dept').textContent     = dept;
+  document.getElementById('sidebar-dept').textContent     = jobPosition;
   document.getElementById('sidebar-avatar').textContent   = getInitials(name);
   // Update greeting card
-  const gHi   = document.getElementById('greeting-hi');
-  const gName = document.getElementById('greeting-name');
-  const gDept = document.getElementById('greeting-dept');
+  const gHi     = document.getElementById('greeting-hi');
+  const gName   = document.getElementById('greeting-name');
+  const gDept   = document.getElementById('greeting-dept');
+  const gCompany = document.getElementById('greeting-company');
   if (gHi)   gHi.textContent   = 'Hi,';
   if (gName) gName.textContent = username;
-  if (gDept) gDept.textContent = dept;
+  if (gDept) gDept.textContent = jobPosition;
+  if (gCompany) {
+    gCompany.textContent = company;
+    gCompany.classList.toggle('hidden', !company);
+  }
+  updateRenderHoursDisplay();
+}
+
+// ── Render Hours (interns) ───────────────────
+function updateRenderHoursDisplay() {
+  const wrap = document.getElementById('greeting-render-hours');
+  if (!wrap) return;
+  const isIntern = userSettings.userType === 'intern';
+  const required = userSettings.requiredRenderHours;
+  if (!isIntern || !required) { wrap.classList.add('hidden'); return; }
+
+  const renderedMins = allRecords
+    .filter(r => r.status === 'present' || r.status === 'ot-leave')
+    .reduce((s, r) => s + (r.workMinutes || 0), 0);
+  const renderedHours = Math.round((renderedMins / 60) * 10) / 10;
+  const remaining = Math.max(0, Math.round((required - renderedHours) * 10) / 10);
+
+  wrap.classList.remove('hidden');
+  document.getElementById('greeting-render-hours-text').textContent =
+    `${renderedHours} of ${required} hrs rendered`;
+  document.getElementById('greeting-render-hours-sub').textContent =
+    `${remaining} hrs remaining`;
 }
 
 // ── New-user onboarding ──────────────────────
@@ -140,10 +167,12 @@ async function ensureTodayRecord() {
   const ref  = db.collection('users').doc(currentUser.uid).collection('attendance').doc(today);
   const snap = await ref.get();
   if (!snap.exists) {
+    const s = timeInputToHm(userSettings.workStart || '08:00');
     await ref.set({
       date: today, timeOutStamp: null, timeOutDisplay: null,
+      timeInDisplay: s ? formatTime12(s.h, s.m) : null,
       workMinutes: null, otMinutes: null, status: 'pending',
-      otUsed: false, createdAt: firebase.firestore.FieldValue.serverTimestamp(), note: '',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(), note: '',
     });
   }
 }
@@ -153,6 +182,7 @@ async function loadRecords() {
   const snap = await db.collection('users').doc(currentUser.uid)
                        .collection('attendance').orderBy('date', 'desc').get();
   allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  allRecords = applyEffectiveMinutes(allRecords, userSettings);
   allRecords.forEach(r => {
     if (r.customWorkStart || r.customWorkEnd) {
       customWorkHours[r.id] = {
@@ -163,6 +193,7 @@ async function loadRecords() {
   });
   renderTable();
   renderStats();
+  updateRenderHoursDisplay();
 }
 
 // ── Absence watcher: mark absent at 11 PM if no time out ──
@@ -213,8 +244,9 @@ function startWorkdayWatcher() {
     try {
       await db.collection('users').doc(currentUser.uid).collection('attendance').doc(today).set({
         date: today, timeOutStamp: null, timeOutDisplay: null,
+        timeInDisplay: formatTime12(ws.h, ws.m),
         workMinutes: null, otMinutes: null, status: 'pending',
-        otUsed: false, createdAt: firebase.firestore.FieldValue.serverTimestamp(), note: '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(), note: '',
       });
       await loadRecords();
     } catch(e) {}
@@ -252,29 +284,37 @@ function renderTable() {
     const isToday     = rec.id === today;
     const isAbsent    = rec.status === 'absent';
     const isHoliday   = rec.status === 'holiday';
-    const isOTLeave   = rec.status === 'ot-leave';
-    const isUsed      = rec.otUsed;
-    const hasOT       = rec.otMinutes > 0;
+    const isOTLeave   = rec.status === 'ot-leave'; // full-day leave only — half day/undertime stay 'present'
+    const hasUsage    = !!rec.otUsageType;
     const notTimedOut = !rec.timeOutStamp && !isAbsent && !isHoliday && !isOTLeave;
 
     let rowClass = '';
     if (isAbsent)                    rowClass = 'row-absent';
     else if (isHoliday)              rowClass = 'row-holiday';
     else if (isOTLeave)              rowClass = 'row-ot-leave';
-    else if (isUsed)                 rowClass = 'row-used';
+    else if (hasUsage)               rowClass = 'row-used';
     else if (isToday && notTimedOut) rowClass = 'row-today';
-    else if (hasOT)                  rowClass = 'row-ot';
+    else if (rec.otMinutes > 0)      rowClass = 'row-ot';
 
-    // Time Out cell
+    // Time In cell — only meaningful for days actually worked
+    const timeInCell = (isOTLeave || isAbsent || isHoliday || (notTimedOut && !isToday))
+      ? '—'
+      : rec.timeInDisplay
+        ? `<span style="font-weight:600">${rec.timeInDisplay}</span>`
+        : '—';
+
+    // Time Out (OT) cell — full-day leave shows "N/A" (no clock in/out that day); everything
+    // else shows the actual logged time, with any OT appended in the same font color.
     let timeOutCell;
     if (isOTLeave) {
-      timeOutCell = `<span class="badge badge-ot-leave">${rec.otUsageType || 'OT-L'}</span>`;
+      timeOutCell = `<span class="badge badge-gray">N/A</span>`;
     } else if (isHoliday) {
       timeOutCell = `<span class="badge badge-holiday">HOL</span>`;
     } else if (isAbsent) {
       timeOutCell = `<span class="badge badge-danger">ABS</span>`;
     } else if (rec.timeOutDisplay) {
-      timeOutCell = `<span style="font-weight:600">${rec.timeOutDisplay}</span>`;
+      const otSuffix = rec.otMinutes > 0 ? ` <span style="font-weight:600">(${minutesToHm(rec.otMinutes)})</span>` : '';
+      timeOutCell = `<span style="font-weight:600">${rec.timeOutDisplay}</span>${otSuffix}`;
     } else if (notTimedOut && isToday) {
       timeOutCell = `<span class="badge badge-warning">Pending</span>`;
     } else if (notTimedOut && !isToday) {
@@ -291,19 +331,10 @@ function renderTable() {
         ${rec.workMinutes != null ? `<div style="font-size:.7rem;color:var(--text-light)">${minutesToHm(rec.workMinutes)} worked</div>` : ''}
       </div>`;
 
-    // OT cell
-    const otDisplay = (isAbsent || isHoliday || isOTLeave) ? '—'
-      : rec.otMinutes > 0
-        ? `<span class="badge badge-warning">${minutesToHm(rec.otMinutes)}</span>`
-        : '<span class="badge badge-gray">None</span>';
-
-    // USE button
-    const canUseOT = rec.otMinutes > 0 && !isAbsent && !isHoliday && !isOTLeave;
-    const useBtn = canUseOT
-      ? `<button class="btn btn-sm ${isUsed ? 'btn-success' : 'btn-primary'} btn-fixed-w"
-           onclick="event.stopPropagation();${isUsed ? `undoUse('${rec.id}')` : `openUseModal('${rec.id}')`}"
-           title="${isUsed ? 'Click to undo use' : 'Use this OT'}">
-           ${isUsed ? 'USED' : 'USE'}</button>`
+    // OT USE cell — plain indicator now (no button). Interacting with a usage (editing or
+    // undoing it) happens via the row's View/Edit modal, not from the table directly.
+    const otUseCell = hasUsage
+      ? `<span class="badge badge-ot-leave" title="OT used as ${otUsageFullLabel(rec.otUsageType)}">${otUsageShortLabel(rec.otUsageType)}</span>`
       : `<span class="badge badge-gray" style="min-width:54px;justify-content:center">N/A</span>`;
 
     return `<tr class="${rowClass} row-clickable" onclick="viewRecord('${rec.id}')">
@@ -311,10 +342,10 @@ function renderTable() {
         <div style="font-weight:600;font-size:.82rem">${formatDateShort(rec.date)}</div>
         <div style="font-size:.7rem;color:var(--text-light)">${dayName(rec.date)}</div>
       </td>
+      <td>${timeInCell}</td>
       <td>${timeOutCell}</td>
       <td>${workHoursCell}</td>
-      <td>${otDisplay}</td>
-      <td onclick="event.stopPropagation()">${useBtn}</td>
+      <td>${otUseCell}</td>
     </tr>`;
   }).join('');
 
@@ -335,9 +366,9 @@ function updateRecordCount(total) {
 // ── Stats ────────────────────────────────────
 function renderStats() {
   const workHours = getWorkdayHours();
-  const usedOT    = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const allOT     = allRecords.reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const remOT     = allOT - usedOT;
+  const pool      = getOTPool(allRecords);
+  const usedOT    = pool.used;
+  const remOT     = pool.remaining;
   const absences  = allRecords.filter(r => r.status === 'absent').length;
 
   // Leave days earned = remaining OT ÷ work hours per day
@@ -362,40 +393,67 @@ function getWorkdayHours() {
   const s = timeInputToHm(userSettings.workStart || '08:00');
   const e = timeInputToHm(userSettings.workEnd   || '17:00');
   if (!s || !e) return 8;
-  return ((e.h * 60 + e.m) - (s.h * 60 + s.m)) / 60;
+  const rawMins = (e.h * 60 + e.m) - (s.h * 60 + s.m);
+  return Math.max(0, rawMins - getBreakMinutes()) / 60;
+}
+
+// Breaktime Hours (from Schedule settings) converted to minutes. Old users with no
+// breakHours saved yet default to 0, so their existing work-hour math is unaffected.
+function getBreakMinutes() {
+  return Math.max(0, Math.round((userSettings.breakHours || 0) * 60));
 }
 
 // Apply the company's OT counting rule to raw overtime minutes
 function applyOTRule(rawOTMins) {
-  const rule = userSettings.otCountingRule || { startRule: 'immediate', delayMins: 0, incrementMins: 1 };
-  if (rawOTMins <= 0) return 0;
-  if (rule.startRule === 'immediate') return rawOTMins;
-
-  // after-delay mode
-  const delay = rule.delayMins || 0;
-  const incr  = rule.incrementMins || 1;
-  if (rawOTMins < delay) return 0;              // hasn't reached OT threshold yet
-  const afterDelay = rawOTMins - delay;
-  // Round down to nearest increment
-  return delay + Math.floor(afterDelay / incr) * incr;
+  return applyOTCountingRule(rawOTMins, userSettings.otCountingRule);
 }
 
 // ── USE OT Modal ─────────────────────────────
-let useModalRecordId = null;
 
-function openUseModal(id) {
-  const rec = allRecords.find(r => r.id === id);
-  if (!rec) return;
-  useModalRecordId = id;
+function getRemainingOTMinutes() {
+  return getOTPool(allRecords).remaining;
+}
 
-  const allOT  = allRecords.reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const usedOT = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const remOT  = allOT - usedOT;
+function getPendingUseDeductMins() {
+  const type = document.getElementById('use-type')?.value;
+  const wh   = getWorkdayHours();
+  if (type === 'leave')   return Math.round(wh * 60);
+  if (type === 'halfday') return Math.round((wh / 2) * 60); // always (Work Hours − Breaktime) / 2
+  const h = parseFloat(document.getElementById('use-hours')?.value) || 0;
+  return Math.round(h * 60);
+}
 
-  document.getElementById('use-modal-date').textContent  = formatDateLong(rec.date);
+// Live-checks the pending Use OT amount against remaining OT; disables Confirm + shows a warning if short
+function validateUseForm() {
+  const remOT   = getRemainingOTMinutes();
+  const deduct  = getPendingUseDeductMins();
+  const warning = document.getElementById('use-insufficient-warning');
+  const warningText = document.getElementById('use-insufficient-warning-text');
+  const btn     = document.getElementById('btn-confirm-use');
+  const insufficient = deduct > 0 && deduct > remOT;
+  if (warning) warning.classList.toggle('hidden', !insufficient);
+  if (warningText && insufficient) {
+    warningText.textContent = `You need ${minutesToHm(deduct)} but only have ${minutesToHm(remOT)} of OT available.`;
+  }
+  if (btn) btn.disabled = insufficient;
+  return !insufficient;
+}
+
+function openUseModal() {
+  if (userSettings.userType === 'intern') {
+    showToast('OT usage is disabled for interns. Your OT hours are still being counted.', 'default');
+    return;
+  }
+  const remOT = getRemainingOTMinutes();
+  if (remOT <= 0) {
+    showToast('No OT hours available to use.', 'default');
+    return;
+  }
+
   document.getElementById('use-modal-avail').textContent = minutesToHm(remOT);
   document.getElementById('use-leave-date').value        = getDateKey();
   document.getElementById('use-type').value              = 'leave';
+  document.getElementById('use-timein').value            = userSettings.workStart || '08:00';
   document.getElementById('use-hours').value             = '';
   document.getElementById('use-note').value              = '';
   handleUseTypeChange();
@@ -406,28 +464,63 @@ function handleUseTypeChange() {
   const type = document.getElementById('use-type')?.value;
   const hg   = document.getElementById('use-hours-group');
   const hint = document.getElementById('use-hours-hint');
-  const wh   = getWorkdayHours();
+  const timeInGroup = document.getElementById('use-timein-group');
+  const minOutHint   = document.getElementById('use-min-timeout-hint');
+  const wh   = getWorkdayHours(); // already (Work Start–End minus Breaktime Hours)
+
   if (type === 'leave') {
-    if (hg)   hg.style.display = 'none';
+    if (hg) hg.style.display = 'none';
+    if (timeInGroup) timeInGroup.style.display = 'none';
+    if (minOutHint) minOutHint.classList.add('hidden');
   } else if (type === 'halfday') {
-    if (hg)   hg.style.display = 'block';
-    if (hint) hint.textContent = `Half day = ${wh/2}h. Enter hours to deduct (auto: ${wh/2}).`;
+    // Half day is always (Work Hours − Breaktime) / 2 — no manual entry needed
+    if (hg) hg.style.display = 'none';
     const hoursEl = document.getElementById('use-hours');
-    if (hoursEl && !hoursEl.value) hoursEl.value = (wh / 2).toFixed(2);
+    if (hoursEl) hoursEl.value = (wh / 2).toFixed(2);
+    if (timeInGroup) timeInGroup.style.display = 'block';
   } else {
     if (hg)   hg.style.display = 'block';
-    if (hint) hint.textContent = 'Enter how many OT hours to deduct for late/undertime.';
+    if (hint) hint.textContent = 'Enter how many OT hours to deduct for undertime.';
     const hoursEl = document.getElementById('use-hours');
     if (hoursEl) hoursEl.value = '';
+    if (timeInGroup) timeInGroup.style.display = 'block';
   }
+  updateMinTimeOutHint();
+  validateUseForm();
+}
+
+// Shows a live "minimum Time Out" hint for Half Day / Undertime, based on Time In + declared hours.
+// Informational only — it doesn't block anything here; the actual warning happens later when the
+// real Time Out for that day is logged (see recalcEditModal / confirmPresentTimeout).
+function updateMinTimeOutHint() {
+  const type = document.getElementById('use-type')?.value;
+  const hintEl = document.getElementById('use-min-timeout-hint');
+  if (!hintEl) return;
+  if (type === 'leave') { hintEl.classList.add('hidden'); return; }
+
+  const tin = document.getElementById('use-timein')?.value;
+  const s = timeInputToHm(tin);
+  if (!s) { hintEl.classList.add('hidden'); return; }
+
+  const wh = getWorkdayHours();
+  let minMins;
+  if (type === 'halfday') {
+    minMins = (s.h * 60 + s.m) + Math.round((wh / 2) * 60);
+  } else {
+    const h = parseFloat(document.getElementById('use-hours')?.value) || 0;
+    const declaredMins = Math.round(h * 60);
+    const expectedWorkMins = Math.max(0, Math.round(wh * 60) - declaredMins);
+    minMins = (s.h * 60 + s.m) + getBreakMinutes() + expectedWorkMins;
+  }
+  hintEl.classList.remove('hidden');
+  hintEl.textContent = `Based on this, your minimum Time Out that day is ${minutesToClockLabel(minMins)}.`;
 }
 
 async function confirmUseOT() {
-  const rec = allRecords.find(r => r.id === useModalRecordId);
-  if (!rec) return;
   const type      = document.getElementById('use-type').value;
   const leaveDate = document.getElementById('use-leave-date').value;
   const note      = document.getElementById('use-note').value.trim();
+  const tin       = document.getElementById('use-timein')?.value || userSettings.workStart || '08:00';
   const wh        = getWorkdayHours();
 
   let deductMins = 0;
@@ -436,8 +529,7 @@ async function confirmUseOT() {
     deductMins = Math.round(wh * 60);
     usageLabel = 'FL-OT';
   } else if (type === 'halfday') {
-    const h = parseFloat(document.getElementById('use-hours').value) || wh / 2;
-    deductMins = Math.round(h * 60);
+    deductMins = Math.round((wh / 2) * 60); // always (Work Hours − Breaktime) / 2 — no manual entry
     usageLabel = 'HD-OT';
   } else {
     const h = parseFloat(document.getElementById('use-hours').value);
@@ -446,63 +538,65 @@ async function confirmUseOT() {
     usageLabel = 'LATE-OT';
   }
 
-  if (!leaveDate) { showToast('Please select a leave date.', 'error'); return; }
+  if (!leaveDate) { showToast('Please select a date.', 'error'); return; }
+
+  const remOT = getRemainingOTMinutes();
+  if (deductMins > remOT) {
+    validateUseForm();
+    showToast(`Insufficient OT — you need ${minutesToHm(deductMins)} but only have ${minutesToHm(remOT)} available.`, 'error');
+    return;
+  }
 
   const btn = document.getElementById('btn-confirm-use');
   btn.disabled = true; btn.textContent = 'Saving…';
 
   try {
-    const batch = db.batch();
-
-    // 1) Mark the OT source record as used
-    const otRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(useModalRecordId);
-    batch.update(otRef, {
-      otUsed:      true,
-      otUsageType: usageLabel,
-      otUsageDate: leaveDate,
-      otUsageMins: deductMins,
-      otUsageNote: note,
-      otLeaveRecordId: leaveDate, // track which attendance date was created
-    });
-
-    // 2) Create/update the attendance record for the leave date with OT-L status
-    // (only create it if the leave date isn't today — today is already auto-created as pending)
-    const today = getDateKey();
+    // OT is pooled — usage doesn't draw from any one specific "source" day, it's just declared
+    // against the total available. The transaction lives entirely on the leave-date record.
     const leaveRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(leaveDate);
     const leaveSnap = await leaveRef.get();
 
-    const leaveData = {
-      date:           leaveDate,
-      status:         'ot-leave',
-      otUsageType:    usageLabel,
-      otUsageMins:    deductMins,
-      otUsageNote:    note,
-      otSourceId:     useModalRecordId,
-      timeOutStamp:   null,
-      timeOutDisplay: null,
-      workMinutes:    deductMins, // count it as work time
-      otMinutes:      0,
-      otUsed:         false,
-    };
-
-    if (!leaveSnap.exists) {
-      batch.set(leaveRef, {
-        ...leaveData,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
+    if (usageLabel === 'FL-OT') {
+      // No work happens that day — a flat credit, Time Out shows "N/A"
+      const leaveData = {
+        date: leaveDate, status: 'ot-leave',
+        otUsageType: usageLabel, otUsageMins: deductMins, otUsageNote: note,
+        timeInDisplay: null, timeOutStamp: null, timeOutDisplay: null,
+        workMinutes: deductMins, otMinutes: 0,
+      };
+      if (!leaveSnap.exists) {
+        await leaveRef.set({ ...leaveData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      } else {
+        await leaveRef.update(leaveData);
+      }
     } else {
-      // Update the existing record to OT-L status
-      batch.update(leaveRef, {
-        status:         'ot-leave',
-        otUsageType:    usageLabel,
-        otUsageMins:    deductMins,
-        otUsageNote:    note,
-        otSourceId:     useModalRecordId,
-      });
+      // Half Day / Undertime — the person does work that day. Time In defaults to schedule
+      // start (editable); Work Hours are computed from their actual logged Time Out once
+      // entered, not fixed to the declared amount — the declared hours are just what's
+      // subtracted from the OT pool, per the OT Counting Condition rule already applied
+      // when that OT was originally earned.
+      const inParsed = timeInputToHm(tin);
+      const timeInDisplay = inParsed ? formatTime12(inParsed.h, inParsed.m) : null;
+      const leaveData = {
+        date: leaveDate, status: 'present',
+        otUsageType: usageLabel, otUsageMins: deductMins, otUsageNote: note,
+        timeInDisplay,
+      };
+      if (!leaveSnap.exists) {
+        await leaveRef.set({
+          ...leaveData,
+          timeOutStamp: null, timeOutDisplay: null, workMinutes: null, otMinutes: null,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Preserve any real clock data already logged for that date — only set Time In if
+        // it wasn't already recorded, so we don't overwrite an actual clock-in.
+        if (!leaveSnap.data().timeInDisplay) await leaveRef.update(leaveData);
+        else await leaveRef.update({ otUsageType: usageLabel, otUsageMins: deductMins, otUsageNote: note });
+      }
     }
 
-    await batch.commit();
-    showToast(`OT logged as ${usageLabel} ✓`, 'success');
+    showToast(`OT logged as ${otUsageShortLabel(usageLabel)} ✓`, 'success');
     closeModal('use-modal');
     await loadRecords();
   } catch(e) {
@@ -513,25 +607,25 @@ async function confirmUseOT() {
 }
 
 // ── Undo Use — confirm prompt ─────────────────
-let undoPendingId = null;
-
+// Operates on the usage record itself (OT is pooled — there's no separate "source" record anymore)
 function undoUse(id) {
-  undoPendingId = id;
   const rec = allRecords.find(r => r.id === id);
   if (!rec) return;
-  // Open record modal in confirm-undo mode
   modalRecordId = id;
   openModal('record-modal');
   setModalMode('confirm-undo');
 }
 
 function renderConfirmUndoMode(rec, titleEl, bodyEl, footerEl) {
-  titleEl.textContent = 'Undo OT Use';
-  const leaveDate = rec.otUsageDate ? formatDateLong(rec.otUsageDate) : 'the recorded leave date';
+  titleEl.textContent = 'Undo OT Usage';
+  const label = otUsageShortLabel(rec.otUsageType);
   bodyEl.innerHTML = `
     <p style="font-size:.88rem;color:var(--text)">
-      Are you sure you want to undo this OT use? The leave record for <strong>${leaveDate}</strong>
-      will be removed from your attendance records and your OT hours will be restored.
+      Undo this ${label} usage for <strong>${formatDateLong(rec.date)}</strong>?
+      ${rec.otUsageType === 'FL-OT'
+        ? ' This record will be removed since no work was logged that day.'
+        : ' The day keeps its logged attendance — only the OT usage will be removed.'}
+      Your OT hours will be restored.
     </p>`;
   footerEl.innerHTML = `
     <button class="btn btn-ghost" onclick="setModalMode('view')">No, Keep It</button>
@@ -542,36 +636,22 @@ async function executeUndoUse(id) {
   const rec = allRecords.find(r => r.id === id);
   if (!rec) return;
   try {
-    const batch = db.batch();
-
-    // 1) Clear OT use flags from source record
-    const otRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(id);
-    batch.update(otRef, {
-      otUsed: false, otUsageType: null, otUsageDate: null,
-      otUsageMins: null, otUsageNote: null, otLeaveRecordId: null,
-    });
-
-    // 2) Remove or revert the leave date record
-    if (rec.otUsageDate) {
-      const leaveRef = db.collection('users').doc(currentUser.uid)
-                         .collection('attendance').doc(rec.otUsageDate);
-      const leaveSnap = await leaveRef.get();
-      if (leaveSnap.exists && leaveSnap.data().status === 'ot-leave') {
-        // If the record was auto-created by us, delete it entirely
-        if (!leaveSnap.data().hadExistingStatus) {
-          batch.delete(leaveRef);
-        } else {
-          // If it existed before, just revert status to pending
-          batch.update(leaveRef, {
-            status: 'pending', otUsageType: null, otUsageMins: null,
-            otSourceId: null, otUsageNote: null,
-          });
-        }
-      }
+    const ref = db.collection('users').doc(currentUser.uid).collection('attendance').doc(id);
+    if (rec.otUsageType === 'FL-OT') {
+      // Full-day leave placeholder — nothing was actually worked, so remove it entirely
+      await ref.delete();
+      showToast('OT usage undone — leave day removed.', 'default');
+    } else {
+      // Half Day / Undertime — keep the real attendance logged that day, just drop the usage
+      await ref.update({
+        otUsageType: firebase.firestore.FieldValue.delete(),
+        otUsageMins: firebase.firestore.FieldValue.delete(),
+        otUsageNote: firebase.firestore.FieldValue.delete(),
+        otUsageDate: firebase.firestore.FieldValue.delete(),
+        otSourceId:  firebase.firestore.FieldValue.delete(),
+      });
+      showToast('OT usage undone.', 'default');
     }
-
-    await batch.commit();
-    showToast('OT use undone. Leave record removed.', 'default');
     closeModal('record-modal');
     await loadRecords();
   } catch(e) {
@@ -622,29 +702,95 @@ function getFilteredTableRecords() {
     if (activeFilters.status   && r.status !== activeFilters.status) return false;
     if (activeFilters.dateFrom && r.date < activeFilters.dateFrom)   return false;
     if (activeFilters.dateTo   && r.date > activeFilters.dateTo)     return false;
-    if (activeFilters.otUse === 'used'    && !r.otUsed)              return false;
-    if (activeFilters.otUse === 'unused'  && r.otUsed)               return false;
+    if (activeFilters.otUse === 'used'    && !r.otUsageType)         return false;
+    if (activeFilters.otUse === 'unused'  && r.otUsageType)          return false;
     if (activeFilters.otUse === 'has-ot'  && !(r.otMinutes > 0))     return false;
     return true;
   });
 }
 
 // ── Export ────────────────────────────────────
+const exportMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
 function openExportModal() {
   const now = getManilaDate();
-  document.getElementById('export-month').value = now.getMonth() + 1;
-  document.getElementById('export-year').value  = now.getFullYear();
+  document.getElementById('export-range-type').value = 'month';
+  document.getElementById('export-month').value  = now.getMonth() + 1;
+  document.getElementById('export-year').value   = now.getFullYear();
+  document.getElementById('export-from-month').value = now.getMonth() + 1;
+  document.getElementById('export-from-year').value  = now.getFullYear();
+  document.getElementById('export-to-month').value   = now.getMonth() + 1;
+  document.getElementById('export-to-year').value    = now.getFullYear();
+  document.getElementById('export-year-single').value = now.getFullYear();
+  document.getElementById('export-from-year-only').value = now.getFullYear();
+  document.getElementById('export-to-year-only').value   = now.getFullYear();
+  handleExportRangeChange();
   openModal('export-modal');
 }
 
+function handleExportRangeChange() {
+  const type = document.getElementById('export-range-type').value;
+  document.getElementById('export-group-month').classList.toggle('hidden', type !== 'month');
+  document.getElementById('export-group-months').classList.toggle('hidden', type !== 'months');
+  document.getElementById('export-group-year').classList.toggle('hidden', type !== 'year');
+  document.getElementById('export-group-years').classList.toggle('hidden', type !== 'years');
+}
+
+// Resolves the modal's inputs into a filtered record list + display/file labels
+function resolveExportSelection() {
+  const type = document.getElementById('export-range-type').value;
+
+  if (type === 'month') {
+    const month = parseInt(document.getElementById('export-month').value);
+    const year  = parseInt(document.getElementById('export-year').value);
+    const prefix = `${year}-${String(month).padStart(2,'0')}`;
+    return {
+      recs: allRecords.filter(r => r.date.startsWith(prefix)),
+      titleLabel: `${exportMonthNames[month-1]} ${year}`,
+      fileLabel:  `${exportMonthNames[month-1]}_${year}`,
+    };
+  }
+
+  if (type === 'months') {
+    const fm = parseInt(document.getElementById('export-from-month').value);
+    const fy = parseInt(document.getElementById('export-from-year').value);
+    const tm = parseInt(document.getElementById('export-to-month').value);
+    const ty = parseInt(document.getElementById('export-to-year').value);
+    const fromYm = `${fy}-${String(fm).padStart(2,'0')}`;
+    const toYm   = `${ty}-${String(tm).padStart(2,'0')}`;
+    if (fromYm > toYm) { showToast('"From" must be before "To".', 'error'); return null; }
+    return {
+      recs: allRecords.filter(r => { const ym = r.date.slice(0,7); return ym >= fromYm && ym <= toYm; }),
+      titleLabel: `${exportMonthNames[fm-1]} ${fy} – ${exportMonthNames[tm-1]} ${ty}`,
+      fileLabel:  `${exportMonthNames[fm-1]}${fy}-${exportMonthNames[tm-1]}${ty}`,
+    };
+  }
+
+  if (type === 'year') {
+    const year = parseInt(document.getElementById('export-year-single').value);
+    return {
+      recs: allRecords.filter(r => r.date.startsWith(`${year}`)),
+      titleLabel: `${year}`,
+      fileLabel:  `${year}`,
+    };
+  }
+
+  // type === 'years'
+  const fy = parseInt(document.getElementById('export-from-year-only').value);
+  const ty = parseInt(document.getElementById('export-to-year-only').value);
+  if (fy > ty) { showToast('"From Year" must be before "To Year".', 'error'); return null; }
+  return {
+    recs: allRecords.filter(r => { const y = parseInt(r.date.slice(0,4)); return y >= fy && y <= ty; }),
+    titleLabel: `${fy} – ${ty}`,
+    fileLabel:  `${fy}-${ty}`,
+  };
+}
+
 async function doExport() {
-  const month  = parseInt(document.getElementById('export-month').value);
-  const year   = parseInt(document.getElementById('export-year').value);
-  const fmt    = document.querySelector('input[name="export-fmt"]:checked')?.value || 'csv';
-  const prefix = `${year}-${String(month).padStart(2,'0')}`;
-  const recs   = allRecords.filter(r => r.date.startsWith(prefix));
-  const mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const monthName = mNames[month - 1];
+  const selection = resolveExportSelection();
+  if (!selection) return;
+  const { recs, titleLabel, fileLabel } = selection;
+  const fmt = document.querySelector('input[name="export-fmt"]:checked')?.value || 'csv';
 
   const statusLabel = r => {
     if (r.status === 'ot-leave')     return r.otUsageType || 'OT-L';
@@ -664,7 +810,7 @@ async function doExport() {
 
   if (fmt === 'csv') {
     const rows = [
-      [`OT Tracker — ${monthName} ${year}`],
+      [`OT Tracker — ${titleLabel}`],
       [`Generated: ${getManilaDate().toLocaleDateString('en-PH')}`],
       [`Present: ${present}`, `Absent: ${absent}`, `Holidays: ${holidays}`, `Total OT: ${minutesToHm(totalOTMins)}`],
       [],
@@ -675,17 +821,17 @@ async function doExport() {
         statusLabel(r),
         r.workMinutes != null ? minutesToHm(r.workMinutes) : '—',
         r.otMinutes > 0 ? minutesToHm(r.otMinutes) : '—',
-        r.otUsed ? (r.otUsageType || 'Used') : '—',
+        r.otUsageType ? otUsageShortLabel(r.otUsageType) : '—',
       ])
     ];
     const csv = rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `OT_Tracker_${monthName}_${year}.csv`; a.click();
+    a.download = `OT_Tracker_${fileLabel}.csv`; a.click();
     showToast('CSV downloaded ✓', 'success');
   } else {
     // PDF via print-ready HTML
-    const html = `<!DOCTYPE html><html><head><title>OT Tracker — ${monthName} ${year}</title>
+    const html = `<!DOCTYPE html><html><head><title>OT Tracker — ${titleLabel}</title>
 <style>
   body { font-family: Arial, sans-serif; font-size: 12px; color: #1E293B; padding: 20px; }
   h1 { font-size: 18px; margin-bottom: 4px; }
@@ -701,7 +847,7 @@ async function doExport() {
   .p { background: #ECFDF5; color: #10B981; } .a { background: #FEF2F2; color: #EF4444; }
   .h { background: #EDE9FE; color: #7C3AED; } .ot { background: #FFFBEB; color: #F59E0B; }
 </style></head><body>
-<h1>OT Tracker — ${monthName} ${year}</h1>
+<h1>OT Tracker — ${titleLabel}</h1>
 <div class="meta">Exported: ${getManilaDate().toLocaleDateString('en-PH', {weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
 <div class="summary">
   <div><strong>${present}</strong>Days Present</div>
@@ -717,7 +863,7 @@ ${recs.map(r => `<tr>
   <td><span class="badge ${r.status==='present'?'p':r.status==='absent'?'a':r.status==='holiday'?'h':''}">${statusLabel(r)}</span></td>
   <td>${r.workMinutes != null ? minutesToHm(r.workMinutes) : '—'}</td>
   <td>${r.otMinutes > 0 ? `<span class="badge ot">${minutesToHm(r.otMinutes)}</span>` : '—'}</td>
-  <td>${r.otUsed ? (r.otUsageType || 'Used') : '—'}</td>
+  <td>${r.otUsageType ? otUsageShortLabel(r.otUsageType) : '—'}</td>
 </tr>`).join('')}
 </table>
 </body></html>`;
@@ -774,10 +920,9 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
     <div id="present-input-section" class="hidden" style="margin-top:.75rem;padding:.75rem;background:var(--primary-light);border-radius:8px;border:1px solid #BFDBFE">
       <label class="form-label" style="font-size:.78rem">Enter your Time Out:</label>
       <div style="display:flex;gap:.5rem;align-items:center;margin-top:.3rem">
-        <input class="form-control" type="text" id="modal-timeout-input" placeholder="e.g. 5:30 PM" style="flex:1"/>
+        <input class="form-control" type="time" id="modal-timeout-input" style="flex:1"/>
         <button class="btn btn-primary btn-sm" onclick="confirmPresentTimeout('${rec.id}')">Confirm</button>
       </div>
-      <div class="form-hint">Format: 5:30 PM</div>
     </div>`;
 
   let statusBadge;
@@ -820,7 +965,7 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
       </div>
       <div class="flex justify-between items-center">
         <span class="text-sm" style="color:var(--text-light)">OT Used</span>
-        <span class="badge ${rec.otUsed?'badge-success':'badge-gray'}">${rec.otUsed?'Yes':'No'}</span>
+        <span class="badge ${rec.otUsageType?'badge-success':'badge-gray'}">${rec.otUsageType ? `Yes (${formatDateShort(rec.date)})` : 'No'}</span>
       </div>
       ${isOTLeave && rec.otSourceId ? `
       <div class="flex justify-between items-center">
@@ -843,6 +988,7 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
 
   footerEl.innerHTML = `
     <button class="btn btn-ghost" style="color:var(--danger);margin-right:auto" onclick="setModalMode('confirm-delete')">🗑 Delete</button>
+    ${rec.otUsageType ? `<button class="btn btn-ghost" onclick="setModalMode('confirm-undo')">↩ Undo OT Usage</button>` : ''}
     <button class="btn btn-primary" onclick="setModalMode('confirm-edit')">✏️ Edit</button>
     <button class="btn btn-ghost" onclick="closeModal('record-modal')">Close</button>`;
 }
@@ -866,6 +1012,11 @@ function renderEditMode(rec, titleEl, bodyEl, footerEl) {
   // Pre-calc display values
   let workDisp = rec.workMinutes != null ? minutesToHm(rec.workMinutes) : '—';
   let otDisp   = rec.otMinutes   != null ? minutesToHm(rec.otMinutes)   : '—';
+  // Native <input type="time"> needs 24h "HH:MM" — convert from the stored "5:30 PM" display string
+  const existingParsedTime = rec.timeOutDisplay ? parseTime12(rec.timeOutDisplay) : null;
+  const existingTimeVal    = existingParsedTime ? hmToTimeInput(existingParsedTime.h, existingParsedTime.m) : '';
+  const existingInParsed   = rec.timeInDisplay ? parseTime12(rec.timeInDisplay) : timeInputToHm(workStart);
+  const existingInVal      = existingInParsed ? hmToTimeInput(existingInParsed.h, existingInParsed.m) : workStart;
 
   bodyEl.innerHTML = `
     <div class="form-group">
@@ -902,10 +1053,21 @@ function renderEditMode(rec, titleEl, bodyEl, footerEl) {
         </div>
       </div>
     </div>
+    <div class="form-group" id="em-timein-group">
+      <label class="form-label">Time In</label>
+      <input class="form-control" type="time" id="em-timein" value="${existingInVal}" oninput="recalcEditModal()"/>
+      <div class="form-hint">Defaults to your Work Start time — edit if you clocked in at a different time.</div>
+    </div>
     <div class="form-group" id="em-timeout-group">
       <label class="form-label">Time Out</label>
-      <input class="form-control" type="text" id="em-timeout" value="${rec.timeOutDisplay || ''}" placeholder="e.g. 5:30 PM" oninput="recalcEditModal()"/>
-      <div class="form-hint">Format: 5:30 PM — Overtime is calculated automatically</div>
+      <input class="form-control" type="time" id="em-timeout" value="${existingTimeVal}" oninput="recalcEditModal()"/>
+      <div class="form-hint">Tap to set your Time Out — Overtime is calculated automatically</div>
+    </div>
+    <div class="hidden" id="em-undertime-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin:-.5rem 0 1rem">
+      <span>⚠️</span><span id="em-undertime-warning-text"></span>
+    </div>
+    <div class="hidden" id="em-early-timeout-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin:-.5rem 0 1rem">
+      <span>⚠️</span><span>You timed out before your work hours end. Use OT hours if you have any undertime.</span>
     </div>
     <div class="form-row" style="margin-bottom:1rem" id="em-calc-group">
       <div style="background:var(--bg);border-radius:7px;padding:.55rem .75rem;border:1px solid var(--border)">
@@ -920,14 +1082,77 @@ function renderEditMode(rec, titleEl, bodyEl, footerEl) {
     <div class="form-group">
       <label class="form-label">Note (optional)</label>
       <textarea class="form-control" id="em-note" rows="2" style="resize:vertical">${rec.note || ''}</textarea>
-    </div>`;
+    </div>
+    ${rec.otUsageType ? `
+    <div class="form-group" style="background:var(--bg);border-radius:8px;padding:.85rem;border:1px solid var(--border)">
+      <div style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:.6rem">OT Usage</div>
+      <div class="form-group" style="margin-bottom:.6rem">
+        <label class="form-label" style="font-size:.78rem">Usage Type</label>
+        <select class="form-control" id="em-usage-type" onchange="handleEditUsageTypeChange()">
+          <option value="FL-OT"   ${rec.otUsageType==='FL-OT'  ?'selected':''}>Full Day Leave (FL-OT)</option>
+          <option value="HD-OT"   ${rec.otUsageType==='HD-OT'  ?'selected':''}>Half Day (HD-OT)</option>
+          <option value="LATE-OT" ${rec.otUsageType==='LATE-OT'?'selected':''}>Undertime (UT-OT)</option>
+        </select>
+      </div>
+      <div class="form-group hidden" id="em-usage-hours-group" style="margin-bottom:.4rem">
+        <label class="form-label" style="font-size:.78rem">Hours to Deduct</label>
+        <input class="form-control" type="number" id="em-usage-hours" min="0.25" step="0.25"
+               value="${((rec.otUsageMins||0)/60).toFixed(2)}" oninput="handleEditUsageTypeChange()"/>
+      </div>
+      <div class="hidden" id="em-usage-insufficient-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin-top:.3rem">
+        <span>⚠️</span><span id="em-usage-insufficient-warning-text"></span>
+      </div>
+    </div>` : ''}`;
 
   footerEl.innerHTML = `
     <button class="btn btn-ghost" onclick="cancelEditMode()">Cancel</button>
     <button class="btn btn-primary" onclick="saveEditFromModal()">Save Changes</button>`;
 
   // Apply initial status-based disable state
-  setTimeout(() => handleEditStatusChange(), 0);
+  setTimeout(() => { handleEditStatusChange(); handleEditUsageTypeChange(); }, 0);
+}
+
+// Live-checks a pending OT-usage-type edit against remaining OT (excluding this record's own
+// currently-declared amount, since we're changing it, not adding a new usage on top of it)
+function handleEditUsageTypeChange() {
+  const typeEl = document.getElementById('em-usage-type');
+  if (!typeEl) return; // record has no otUsageType — nothing to edit
+  const type = typeEl.value;
+  const hg   = document.getElementById('em-usage-hours-group');
+  const wh   = getWorkdayHours();
+
+  let deductMins;
+  if (type === 'FL-OT') {
+    if (hg) hg.style.display = 'none';
+    deductMins = Math.round(wh * 60);
+  } else if (type === 'HD-OT') {
+    if (hg) hg.style.display = 'none';
+    deductMins = Math.round((wh / 2) * 60);
+  } else {
+    if (hg) hg.style.display = 'block';
+    const h = parseFloat(document.getElementById('em-usage-hours')?.value) || 0;
+    deductMins = Math.round(h * 60);
+  }
+
+  const rec = allRecords.find(r => r.id === modalRecordId);
+  const remOTExcludingThis = getRemainingOTMinutesExcluding(rec ? rec.id : null);
+  const warning = document.getElementById('em-usage-insufficient-warning');
+  const warningText = document.getElementById('em-usage-insufficient-warning-text');
+  const insufficient = deductMins > 0 && deductMins > remOTExcludingThis;
+  if (warning) warning.classList.toggle('hidden', !insufficient);
+  if (warningText && insufficient) {
+    warningText.textContent = `You need ${minutesToHm(deductMins)} but only have ${minutesToHm(remOTExcludingThis)} of OT available.`;
+  }
+  const saveBtn = document.querySelector('#record-modal-footer .btn-primary');
+  if (saveBtn) saveBtn.disabled = insufficient;
+  return { type, deductMins, insufficient };
+}
+
+// Remaining OT if we ignore one specific record's own declared usage (used while editing that
+// record's usage type, so it isn't counted as "already used" against itself)
+function getRemainingOTMinutesExcluding(excludeId) {
+  const others = excludeId ? allRecords.filter(r => r.id !== excludeId) : allRecords;
+  return getOTPool(others).remaining;
 }
 
 function toggleEditModalWorkHours() {
@@ -958,28 +1183,78 @@ function handleEditStatusChange() {
 }
 
 function recalcEditModal() {
+  const tin    = document.getElementById('em-timein')?.value;
   const tout   = (document.getElementById('em-timeout')?.value || '').trim();
-  const wStart = document.getElementById('em-work-start')?.value || getEffectiveWorkHours(modalRecordId).workStart;
   const wEnd   = document.getElementById('em-work-end')?.value   || getEffectiveWorkHours(modalRecordId).workEnd;
+  const fallbackStart = document.getElementById('em-work-start')?.value || getEffectiveWorkHours(modalRecordId).workStart;
 
   const otEl   = document.getElementById('em-ot-display');
   const workEl = document.getElementById('em-work-display');
-  if (!tout || !wStart || !wEnd) { if(otEl) otEl.textContent='—'; if(workEl) workEl.textContent='—'; return; }
+  const warnEl = document.getElementById('em-undertime-warning');
+  if (!tout || !wEnd) { if(otEl) otEl.textContent='—'; if(workEl) workEl.textContent='—'; if(warnEl) warnEl.classList.add('hidden'); return; }
 
-  const parsed = parseTime12(tout);
+  const parsed = timeInputToHm(tout);
   if (!parsed) { if(otEl) otEl.textContent='Invalid time'; return; }
 
-  const s = timeInputToHm(wStart), e = timeInputToHm(wEnd);
+  const s = timeInputToHm(tin || fallbackStart), e = timeInputToHm(wEnd);
   if (!s || !e) return;
   const base = new Date();
   const toMs = new Date(base.getFullYear(), base.getMonth(), base.getDate(), parsed.h, parsed.m, 0).getTime();
   const sMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
   const eMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
-  const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
+  const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000) - getBreakMinutes());
   const otMinsRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
   const otMins   = applyOTRule(otMinsRaw);
-  if (workEl) workEl.textContent = minutesToHm(workMins);
+  if (workEl) workEl.textContent = minutesToHm(workMins + otMins);
   if (otEl)   otEl.textContent   = otMins > 0 ? minutesToHm(otMins) : 'None';
+
+  // Soft warnings — never block saving.
+  // If this day already has a declared Half Day / Undertime usage, flag checking out earlier
+  // than THAT accounts for. Otherwise, flag checking out before Work End with no OT declared
+  // at all, so the shortfall doesn't go unaccounted for.
+  const earlyWarn = document.getElementById('em-early-timeout-warning');
+  if (warnEl) {
+    const rec = allRecords.find(r => r.id === modalRecordId);
+    const minMins = computeMinTimeOutForUsage(rec, s);
+    if (minMins != null && (parsed.h * 60 + parsed.m) < minMins) {
+      warnEl.classList.remove('hidden');
+      const label = rec.otUsageType === 'HD-OT' ? 'half day' : 'undertime';
+      document.getElementById('em-undertime-warning-text').textContent =
+        `You're checking out earlier than your declared ${label} accounts for. Minimum Time Out: ${minutesToClockLabel(minMins)}.`;
+      if (earlyWarn) earlyWarn.classList.add('hidden');
+    } else {
+      warnEl.classList.add('hidden');
+      const noUsage = !rec || !rec.otUsageType;
+      if (earlyWarn) earlyWarn.classList.toggle('hidden', !(noUsage && isEarlyCheckoutWithoutOT(parsed, e)));
+    }
+  }
+}
+
+// True when someone with NO OT usage declared for that day clocks out before Work End —
+// they may want to use OT hours to cover the shortfall instead of it going unaccounted for.
+function isEarlyCheckoutWithoutOT(toutHm, workEndHm) {
+  if (!toutHm || !workEndHm) return false;
+  return (toutHm.h * 60 + toutHm.m) < (workEndHm.h * 60 + workEndHm.m);
+}
+
+// For a Half Day / Undertime OT-usage record, computes the minimum valid Time Out given a Time In —
+// used to softly warn (never block) if the logged Time Out falls short of what was declared.
+function computeMinTimeOutForUsage(rec, tinHm) {
+  if (!rec || !rec.otUsageType || rec.otUsageType === 'FL-OT' || !tinHm) return null;
+  const wh = getWorkdayHours(); // hours, already break-excluded
+  if (rec.otUsageType === 'HD-OT') {
+    const expectedWorkMins = Math.round((wh / 2) * 60); // half day assumed break-free
+    return (tinHm.h * 60 + tinHm.m) + expectedWorkMins;
+  }
+  // LATE-OT (displayed as Undertime (UT-OT))
+  const declaredMins = rec.otUsageMins || 0;
+  const expectedWorkMins = Math.max(0, Math.round(wh * 60) - declaredMins);
+  return (tinHm.h * 60 + tinHm.m) + getBreakMinutes() + expectedWorkMins;
+}
+
+function minutesToClockLabel(totalMins) {
+  const h = Math.floor(totalMins / 60) % 24, m = ((totalMins % 60) + 60) % 60;
+  return formatTime12(h, m);
 }
 
 function cancelEditMode() {
@@ -992,37 +1267,55 @@ async function saveEditFromModal() {
   if (!rec) return;
   const date     = rec.date;
   const dropStatus = document.getElementById('em-status')?.value || 'present';
+  const tin      = document.getElementById('em-timein')?.value || getEffectiveWorkHours(date).workStart;
   const tout     = (dropStatus === 'present') ? (document.getElementById('em-timeout')?.value || '').trim() : '';
   const wStart   = document.getElementById('em-work-start')?.value || getEffectiveWorkHours(date).workStart;
   const wEnd     = document.getElementById('em-work-end')?.value   || getEffectiveWorkHours(date).workEnd;
   const note     = document.getElementById('em-note')?.value.trim() || '';
+
+  // If this record has an editable OT Usage section, re-validate + capture the (possibly changed) values
+  let usageUpdate = null;
+  if (document.getElementById('em-usage-type')) {
+    const result = handleEditUsageTypeChange();
+    if (result && result.insufficient) {
+      showToast(`Insufficient OT for this usage type — you need ${minutesToHm(result.deductMins)}.`, 'error');
+      return;
+    }
+    if (result) {
+      usageUpdate = { otUsageType: result.type, otUsageMins: result.deductMins };
+    }
+  }
 
   let workMins = null, otMins = null, status = dropStatus;
 
   if (dropStatus === 'absent' || dropStatus === 'holiday') {
     workMins = 0; otMins = 0;
   } else {
-    const parsed = tout ? parseTime12(tout) : null;
-    if (parsed && wStart && wEnd) {
-      const s = timeInputToHm(wStart), e = timeInputToHm(wEnd);
+    const parsed = tout ? timeInputToHm(tout) : null;
+    const inParsed = timeInputToHm(tin);
+    if (parsed && inParsed && wEnd) {
+      const e = timeInputToHm(wEnd);
       const base = new Date();
       const toMs = new Date(base.getFullYear(), base.getMonth(), base.getDate(), parsed.h, parsed.m, 0).getTime();
-      const sMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
+      const sMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), inParsed.h, inParsed.m, 0).getTime();
       const eMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
-      workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
+      workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000) - getBreakMinutes());
       const _otRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
       otMins   = applyOTRule(_otRaw);
+      workMins += otMins; // Work Hours = base shift (minus break) + OT, for every user
     }
   }
 
-  const parsed = (dropStatus === 'present' && tout) ? parseTime12(tout) : null;
+  const parsed = (dropStatus === 'present' && tout) ? timeInputToHm(tout) : null;
+  const inParsedForSave = (dropStatus === 'present') ? timeInputToHm(tin) : null;
   const defaultStart = userSettings.workStart || '08:00';
   const defaultEnd   = userSettings.workEnd   || '17:00';
   const isCustom     = (dropStatus === 'present') && (wStart !== defaultStart || wEnd !== defaultEnd);
 
   const data = {
     date, status, note,
-    timeOutDisplay: (dropStatus==='present' && tout) ? tout : null,
+    timeInDisplay: inParsedForSave ? formatTime12(inParsedForSave.h, inParsedForSave.m) : null,
+    timeOutDisplay: parsed ? formatTime12(parsed.h, parsed.m) : null,
     timeOutStamp: parsed ? firebase.firestore.Timestamp.fromDate(
       (() => { const d = getManilaDate(); d.setHours(parsed.h, parsed.m, 0, 0); return d; })()
     ) : null,
@@ -1030,6 +1323,7 @@ async function saveEditFromModal() {
     customWorkStart: isCustom ? wStart : null,
     customWorkEnd:   isCustom ? wEnd   : null,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    ...(usageUpdate || {}),
   };
 
   if (isCustom) customWorkHours[date] = { workStart: wStart, workEnd: wEnd };
@@ -1041,6 +1335,10 @@ async function saveEditFromModal() {
   try {
     await db.collection('users').doc(currentUser.uid).collection('attendance').doc(date).update(data);
     showToast('Record modified ✓', 'success');
+    const hasUsage = !!(usageUpdate ? usageUpdate.otUsageType : rec.otUsageType);
+    if (dropStatus === 'present' && !hasUsage && isEarlyCheckoutWithoutOT(parsed, timeInputToHm(wEnd))) {
+      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any undertime.', 'default');
+    }
     await loadRecords();
     setModalMode('view');
   } catch(e) {
@@ -1066,6 +1364,14 @@ async function executeDelete(id) {
     showToast('Record deleted.', 'default');
     closeModal('record-modal');
     await loadRecords();
+
+    // OT is pooled and derived fresh from all records, so deleting one automatically "reverts"
+    // its contribution — same as Undo. This just surfaces the rare case where the record deleted
+    // had earned OT that was already used elsewhere, leaving the pool short.
+    const pool = getOTPool(allRecords);
+    if (pool.remaining < 0) {
+      showToast(`⚠ Deleting this record left your OT balance short by ${minutesToHm(-pool.remaining)}.`, 'default');
+    }
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }
@@ -1112,21 +1418,25 @@ function showPresentInput() {
 
 async function confirmPresentTimeout(id) {
   const input = document.getElementById('modal-timeout-input');
-  const tout  = input ? input.value.trim() : '';
-  if (!tout) { showToast('Please enter your Time Out time.', 'error'); return; }
+  const toutVal = input ? input.value.trim() : '';
+  if (!toutVal) { showToast('Please set your Time Out.', 'error'); return; }
 
-  const parsed = parseTime12(tout);
-  if (!parsed) { showToast('Invalid time format. Use e.g. 5:30 PM', 'error'); return; }
+  const parsed = timeInputToHm(toutVal);
+  if (!parsed) { showToast('Invalid time.', 'error'); return; }
+  const tout = formatTime12(parsed.h, parsed.m);
 
+  const rec = allRecords.find(r => r.id === id);
   const { workStart, workEnd } = getEffectiveWorkHours(id);
-  const s = timeInputToHm(workStart), e = timeInputToHm(workEnd);
+  const s = rec && rec.timeInDisplay ? parseTime12(rec.timeInDisplay) : timeInputToHm(workStart);
+  const e = timeInputToHm(workEnd);
   const base = getManilaDate();
   const toMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), parsed.h, parsed.m, 0).getTime();
   const sMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
   const eMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
-  const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
+  const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000) - getBreakMinutes());
   const otMinsRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
   const otMins   = applyOTRule(otMinsRaw);
+  const totalWorkMins = workMins + otMins; // Work Hours = base shift (minus break) + OT, for every user
 
   try {
     await db.collection('users').doc(currentUser.uid).collection('attendance').doc(id)
@@ -1136,10 +1446,22 @@ async function confirmPresentTimeout(id) {
               timeOutStamp: firebase.firestore.Timestamp.fromDate(
                 (() => { const d = getManilaDate(); d.setHours(parsed.h, parsed.m, 0, 0); return d; })()
               ),
-              workMinutes: workMins,
+              workMinutes: totalWorkMins,
               otMinutes: otMins,
             });
     showToast(`Time Out logged at ${tout}`, 'success');
+
+    // Soft warnings — never block.
+    // If this day already has a declared Half Day / Undertime usage, flag checking out earlier
+    // than THAT accounts for. Otherwise, flag checking out before Work End with no OT declared.
+    const minMins = computeMinTimeOutForUsage(rec, s);
+    if (minMins != null && (parsed.h * 60 + parsed.m) < minMins) {
+      const label = rec.otUsageType === 'HD-OT' ? 'half day' : 'undertime';
+      showToast(`⚠ You checked out earlier than your declared ${label} accounts for (minimum: ${minutesToClockLabel(minMins)}).`, 'default');
+    } else if ((!rec || !rec.otUsageType) && isEarlyCheckoutWithoutOT(parsed, e)) {
+      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any undertime.', 'default');
+    }
+
     await loadRecords();
     setModalMode('view');
   } catch(e) {
@@ -1173,6 +1495,7 @@ function openAddModal() {
   editingId = null;
   const today = getDateKey();
   document.getElementById('edit-date').value          = today;
+  document.getElementById('edit-timein').value        = userSettings.workStart || '08:00';
   document.getElementById('edit-timeout').value       = '';
   document.getElementById('edit-note').value          = '';
   document.getElementById('edit-work-start').value    = userSettings.workStart || '08:00';
@@ -1195,29 +1518,35 @@ function openWorkHoursEditor() {
 }
 
 function recalcModalOT() {
+  const tin    = document.getElementById('edit-timein').value;
   const tout   = document.getElementById('edit-timeout').value.trim();
   const wStart = document.getElementById('edit-work-start').value;
   const wEnd   = document.getElementById('edit-work-end').value;
   const otEl   = document.getElementById('edit-ot-display');
   const workEl = document.getElementById('edit-work-display');
-  if (!tout || !wStart || !wEnd) { if(otEl) otEl.textContent='—'; if(workEl) workEl.textContent='—'; return; }
-  const parsed = parseTime12(tout);
+  if (!tout || !wEnd) { if(otEl) otEl.textContent='—'; if(workEl) workEl.textContent='—'; return; }
+  const parsed = timeInputToHm(tout);
   if (!parsed) { if(otEl) otEl.textContent='Invalid time'; return; }
-  const s = timeInputToHm(wStart), e = timeInputToHm(wEnd);
+  const s = timeInputToHm(tin || wStart), e = timeInputToHm(wEnd);
   if (!s || !e) return;
   const base = new Date();
   const toMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), parsed.h, parsed.m, 0).getTime();
   const sMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
   const eMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
-  const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
+  const workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000) - getBreakMinutes());
   const otMinsRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
   const otMins   = applyOTRule(otMinsRaw);
-  if (workEl) workEl.textContent = minutesToHm(workMins);
+  if (workEl) workEl.textContent = minutesToHm(workMins + otMins);
   if (otEl)   otEl.textContent   = otMins > 0 ? minutesToHm(otMins) : 'None';
+
+  // Add Record is always for a fresh record — it never has OT usage declared yet
+  const earlyWarn = document.getElementById('edit-early-timeout-warning');
+  if (earlyWarn) earlyWarn.classList.toggle('hidden', !isEarlyCheckoutWithoutOT(parsed, e));
 }
 
 async function saveRecord() {
   const date      = document.getElementById('edit-date').value;
+  const tin       = document.getElementById('edit-timein').value;
   const tout      = document.getElementById('edit-timeout').value.trim();
   const wStart    = document.getElementById('edit-work-start').value;
   const wEnd      = document.getElementById('edit-work-end').value;
@@ -1230,21 +1559,24 @@ async function saveRecord() {
   if (dropStatus === 'absent' || dropStatus === 'holiday') {
     workMins = 0; otMins = 0;
   } else {
-    // present — calculate from time out
-    const parsed = tout ? parseTime12(tout) : null;
-    if (parsed && wStart && wEnd) {
-      const s = timeInputToHm(wStart), e = timeInputToHm(wEnd);
+    // present — calculate from Time In → Time Out
+    const parsed = tout ? timeInputToHm(tout) : null;
+    const inParsed = timeInputToHm(tin || wStart);
+    if (parsed && inParsed && wEnd) {
+      const e = timeInputToHm(wEnd);
       const base = new Date();
       const toMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), parsed.h, parsed.m, 0).getTime();
-      const sMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), s.h, s.m, 0).getTime();
+      const sMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), inParsed.h, inParsed.m, 0).getTime();
       const eMs   = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
-      workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000));
+      workMins = Math.max(0, Math.round((Math.min(toMs, eMs) - sMs) / 60_000) - getBreakMinutes());
       const _otRaw = Math.max(0, Math.round((toMs - eMs) / 60_000));
       otMins   = applyOTRule(_otRaw);
+      workMins += otMins; // Work Hours = base shift (minus break) + OT, for every user
     }
   }
 
-  const parsed = (dropStatus === 'present' && tout) ? parseTime12(tout) : null;
+  const parsed = (dropStatus === 'present' && tout) ? timeInputToHm(tout) : null;
+  const inParsedForSave = (dropStatus === 'present') ? timeInputToHm(tin || wStart) : null;
 
   const defaultStart = userSettings.workStart || '08:00';
   const defaultEnd   = userSettings.workEnd   || '17:00';
@@ -1252,7 +1584,8 @@ async function saveRecord() {
 
   const data = {
     date,
-    timeOutDisplay: (dropStatus === 'present' && tout) ? tout : null,
+    timeInDisplay: inParsedForSave ? formatTime12(inParsedForSave.h, inParsedForSave.m) : null,
+    timeOutDisplay: parsed ? formatTime12(parsed.h, parsed.m) : null,
     timeOutStamp: parsed ? firebase.firestore.Timestamp.fromDate(
       (() => { const d = getManilaDate(); d.setHours(parsed.h, parsed.m, 0, 0); return d; })()
     ) : null,
@@ -1270,8 +1603,11 @@ async function saveRecord() {
 
   try {
     const ref = db.collection('users').doc(currentUser.uid).collection('attendance').doc(date);
-    await ref.set({ ...data, otUsed: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await ref.set({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
     showToast('Record saved ✓', 'success');
+    if (dropStatus === 'present' && isEarlyCheckoutWithoutOT(parsed, timeInputToHm(wEnd))) {
+      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any undertime.', 'default');
+    }
     closeModal('add-modal');
     await loadRecords();
   } catch(e) {

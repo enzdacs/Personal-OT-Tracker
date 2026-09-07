@@ -7,6 +7,8 @@ let userSettings  = null;
 let allRecords    = [];
 let charts        = {};
 let currentPeriod = 'month';
+let customPeriodType  = 'date';
+let customPeriodValue = '';
 
 document.addEventListener('DOMContentLoaded', () => {
   showLoader();
@@ -33,19 +35,38 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.period-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentPeriod = btn.dataset.period;
+      const picker = document.getElementById('custom-period-picker');
+      if (picker) picker.classList.toggle('hidden', currentPeriod !== 'custom');
+      if (currentPeriod === 'custom') updateCustomPeriodInputType();
       renderAll();
     });
   });
 
-  document.getElementById('btn-logout').addEventListener('click', async () => {
-    await auth.signOut(); window.location.href = 'index.html';
+  document.getElementById('custom-period-type')?.addEventListener('change', () => {
+    customPeriodType = document.getElementById('custom-period-type').value;
+    updateCustomPeriodInputType();
+    renderAll();
   });
+  document.getElementById('custom-period-date')?.addEventListener('change', e => {
+    customPeriodValue = e.target.value;
+    renderAll();
+  });
+
+  document.getElementById('btn-logout').addEventListener('click', confirmAndSignOut);
 });
+
+function updateCustomPeriodInputType() {
+  const input = document.getElementById('custom-period-date');
+  if (!input) return;
+  input.type = customPeriodType === 'date' ? 'date' : customPeriodType === 'week' ? 'week' : 'month';
+  input.value = '';
+  customPeriodValue = '';
+}
 
 function updateSidebarUser() {
   const name = userSettings.fullName || currentUser.email;
   document.getElementById('sidebar-username').textContent = name;
-  document.getElementById('sidebar-dept').textContent     = userSettings.department || 'Employee';
+  document.getElementById('sidebar-dept').textContent     = userSettings.jobPosition || userSettings.department || 'Employee';
   document.getElementById('sidebar-avatar').textContent   = getInitials(name);
 }
 
@@ -53,6 +74,7 @@ async function loadData() {
   const snap = await db.collection('users').doc(currentUser.uid)
                        .collection('attendance').orderBy('date', 'asc').get();
   allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  allRecords = applyEffectiveMinutes(allRecords, userSettings);
   renderAll();
 }
 
@@ -69,7 +91,26 @@ function getFilteredRecords() {
     return allRecords.filter(r => r.date.startsWith(prefix));
   }
   if (currentPeriod === 'year') return allRecords.filter(r => r.date.startsWith(`${now.getFullYear()}`));
+  if (currentPeriod === 'custom') return getCustomFilteredRecords();
   return allRecords;
+}
+
+function getCustomFilteredRecords() {
+  if (!customPeriodValue) return [];
+  if (customPeriodType === 'date')  return allRecords.filter(r => r.date === customPeriodValue);
+  if (customPeriodType === 'month') return allRecords.filter(r => r.date.startsWith(customPeriodValue));
+  if (customPeriodType === 'week') {
+    const range = isoWeekToDateRange(customPeriodValue);
+    if (!range) return [];
+    return allRecords.filter(r => r.date >= range.start && r.date <= range.end);
+  }
+  return [];
+}
+
+// Maps the current period to the chart "shape" it should render as
+function getChartKind() {
+  if (currentPeriod !== 'custom') return currentPeriod;
+  return customPeriodType === 'date' ? 'today' : customPeriodType;
 }
 
 function renderAll() {
@@ -120,15 +161,16 @@ function renderBar(recs) {
   const ctx = document.getElementById('chart-attendance-bar');
   if (!ctx) return;
   let labels = [], presentData = [], absentData = [], holidayData = [], otLeaveData = [];
+  const kind = getChartKind();
 
-  if (currentPeriod === 'today') {
+  if (kind === 'today') {
     const rec = recs[0];
     labels      = ['Today'];
     presentData = [rec && rec.status === 'present'  ? 1 : 0];
     absentData  = [rec && rec.status === 'absent'   ? 1 : 0];
     holidayData = [rec && rec.status === 'holiday'  ? 1 : 0];
     otLeaveData = [rec && rec.status === 'ot-leave' ? 1 : 0];
-  } else if (currentPeriod === 'week') {
+  } else if (kind === 'week') {
     const days   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayMap = { 1:0,2:1,3:2,4:3,5:4,6:5,0:6 };
     labels = days;
@@ -141,7 +183,7 @@ function renderBar(recs) {
       if (r.status === 'holiday')  holidayData[idx] = 1;
       if (r.status === 'ot-leave') otLeaveData[idx] = 1;
     });
-  } else if (currentPeriod === 'month') {
+  } else if (kind === 'month') {
     const weeks = { 'Wk 1':{p:0,a:0,h:0,ol:0},'Wk 2':{p:0,a:0,h:0,ol:0},'Wk 3':{p:0,a:0,h:0,ol:0},'Wk 4':{p:0,a:0,h:0,ol:0},'Wk 5':{p:0,a:0,h:0,ol:0} };
     recs.forEach(r => {
       const day = parseInt(r.date.split('-')[2]);
@@ -215,11 +257,11 @@ function renderTable(recs) {
     if (r.status==='present')       badge = `<span class="badge badge-success">Present</span>`;
     else if (r.status==='absent')   badge = `<span class="badge badge-danger">ABS</span>`;
     else if (r.status==='holiday')  badge = `<span class="badge badge-holiday">HOL</span>`;
-    else if (r.status==='ot-leave') badge = `<span class="badge badge-ot-leave">${r.otUsageType || 'FL-OT'}</span>`;
+    else if (r.status==='ot-leave') badge = `<span class="badge badge-ot-leave">${otUsageShortLabel(r.otUsageType || 'FL-OT')}</span>`;
     else                             badge = `<span class="badge badge-gray">Pending</span>`;
     const timeOutDisplay = r.status==='absent' ? 'ABS'
       : r.status==='holiday' ? 'HOL'
-      : r.status==='ot-leave' ? (r.otUsageType || 'FL-OT')
+      : r.status==='ot-leave' ? otUsageShortLabel(r.otUsageType || 'FL-OT')
       : (r.timeOutDisplay || '—');
     return `<tr>
       <td>${formatDateShort(r.date)}</td>

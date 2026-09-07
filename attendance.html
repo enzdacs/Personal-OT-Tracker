@@ -84,7 +84,18 @@
           <button class="period-tab" data-period="week">This Week</button>
           <button class="period-tab active" data-period="month">This Month</button>
           <button class="period-tab" data-period="year">This Year</button>
+          <button class="period-tab" data-period="custom">Custom</button>
         </div>
+      </div>
+
+      <!-- Custom Period Picker -->
+      <div class="custom-period-picker hidden" id="custom-period-picker">
+        <select class="form-control" id="custom-period-type">
+          <option value="date">Date</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+        </select>
+        <input class="form-control" type="date" id="custom-period-date"/>
       </div>
 
       <!-- Summary Cards -->
