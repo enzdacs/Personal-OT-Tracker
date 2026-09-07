@@ -29,13 +29,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
-  document.getElementById('btn-logout').addEventListener('click', async () => {
-    await auth.signOut(); window.location.href = 'index.html';
-  });
+  document.getElementById('btn-logout').addEventListener('click', confirmAndSignOut);
 
   // Auto-update OT-to-leave and preview when times change; mark dirty
   document.addEventListener('input', e => {
-    const watchedIds = ['s-work-start','s-work-end','s-ot-delay-mins','s-ot-increment-mins'];
+    const watchedIds = ['s-work-start','s-work-end','s-break-hours','s-ot-delay-mins','s-ot-increment-mins'];
     if (watchedIds.includes(e.target.id)) {
       updateWorkHoursPreview();
       updateOTLeaveComputed();
@@ -44,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   document.addEventListener('change', e => {
-    const watchedIds = ['s-work-start','s-work-end','s-ot-start-rule','s-ot-delay-mins','s-ot-increment-mins'];
+    const watchedIds = ['s-work-start','s-work-end','s-break-hours','s-ot-start-rule','s-ot-delay-mins','s-ot-increment-mins'];
     if (watchedIds.includes(e.target.id)) {
       updateWorkHoursPreview();
       updateOTLeaveComputed();
@@ -65,7 +63,7 @@ function markScheduleDirty() {
 function updateSidebarUser() {
   const name = userSettings.fullName || currentUser.email;
   document.getElementById('sidebar-username').textContent = name;
-  document.getElementById('sidebar-dept').textContent     = userSettings.department || 'Employee';
+  document.getElementById('sidebar-dept').textContent     = userSettings.jobPosition || userSettings.department || 'Employee';
   document.getElementById('sidebar-avatar').textContent   = getInitials(name);
 }
 
@@ -73,6 +71,7 @@ function populateScheduleForm() {
   const s = userSettings;
   document.getElementById('s-work-start').value = s.workStart || '08:00';
   document.getElementById('s-work-end').value   = s.workEnd   || '17:00';
+  document.getElementById('s-break-hours').value = s.breakHours ?? 0;
 
   const workDays = s.workDays || [1,2,3,4,5];
   document.querySelectorAll('.day-check').forEach(cb => {
@@ -182,12 +181,17 @@ function onWorkDayChange() {
   markScheduleDirty();
 }
 
+function getBreakMinutes() {
+  const hrs = parseFloat(document.getElementById('s-break-hours')?.value);
+  return hrs > 0 ? Math.round(hrs * 60) : 0;
+}
+
 function updateWorkHoursPreview() {
   const start = timeInputToHm(document.getElementById('s-work-start')?.value);
   const end   = timeInputToHm(document.getElementById('s-work-end')?.value);
   const el    = document.getElementById('work-hours-preview');
   if (!start || !end || !el) return;
-  const mins = (end.h * 60 + end.m) - (start.h * 60 + start.m);
+  const mins = (end.h * 60 + end.m) - (start.h * 60 + start.m) - getBreakMinutes();
   el.textContent = mins > 0 ? `= ${minutesToHm(mins)} of work per day` : 'Invalid range';
 }
 
@@ -197,7 +201,7 @@ function updateOTLeaveComputed() {
   const el    = document.getElementById('ot-leave-computed');
   if (!el) return;
   if (!start || !end) { el.textContent = '—'; return; }
-  const mins  = (end.h * 60 + end.m) - (start.h * 60 + start.m);
+  const mins  = (end.h * 60 + end.m) - (start.h * 60 + start.m) - getBreakMinutes();
   if (mins <= 0) { el.textContent = '—'; return; }
   el.textContent = `${Math.round(mins / 60 * 10) / 10}h`;
 }
@@ -229,10 +233,13 @@ async function saveSchedule() {
     if (!start || !end) { showToast('Please set work start and end times.', 'error'); return; }
   }
 
+  const breakHours = Math.max(0, parseFloat(document.getElementById('s-break-hours')?.value) || 0);
+  const breakMins  = Math.round(breakHours * 60);
+
   const ws = timeInputToHm(start);
   const we = timeInputToHm(end);
   if (ws && we) {
-    const mins = (we.h * 60 + we.m) - (ws.h * 60 + ws.m);
+    const mins = (we.h * 60 + we.m) - (ws.h * 60 + ws.m) - breakMins;
     if (mins > 0) otToLeaveHours = Math.round(mins / 60 * 10) / 10;
   }
 
@@ -251,7 +258,7 @@ async function saveSchedule() {
   try {
     await db.collection('users').doc(currentUser.uid)
             .collection('config').doc('settings')
-            .set({ workStart: start, workEnd: end, workDays: days,
+            .set({ workStart: start, workEnd: end, workDays: days, breakHours,
                    multiSchedule: isMulti, perDaySchedule,
                    otToLeaveHours, otCountingRule, isNewUser: false }, { merge: true });
     clearSettingsCache();

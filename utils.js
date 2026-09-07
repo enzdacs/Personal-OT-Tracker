@@ -94,6 +94,24 @@ function weekStart(dateKey) {
   return `${ny}-${nm}-${nd}`;
 }
 
+// Converts an <input type="week"> value ("YYYY-Www") into a { start, end } date-key range (Mon–Sun, ISO week)
+function isoWeekToDateRange(weekStr) {
+  const match = /^(\d{4})-W(\d{2})$/.exec(weekStr || '');
+  if (!match) return null;
+  const year = parseInt(match[1]);
+  const week = parseInt(match[2]);
+  const jan4 = new Date(year, 0, 4);
+  const jan4Day = jan4.getDay() || 7; // Mon=1..Sun=7
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(jan4.getDate() - (jan4Day - 1));
+  const start = new Date(week1Monday);
+  start.setDate(week1Monday.getDate() + (week - 1) * 7);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return { start: fmt(start), end: fmt(end) };
+}
+
 // ── Toast Notifications ──────────────────────
 function showToast(msg, type = 'default', duration = 3000) {
   let container = document.getElementById('toast-container');
@@ -148,8 +166,13 @@ async function getUserSettings(uid) {
         fullName:       data.fullName       || '',
         username:       data.username       || '',
         department:     data.department     || '',
+        companyName:    data.companyName    || '',
+        jobPosition:    data.jobPosition    || data.department || '',
+        userType:       data.userType       || 'employee',
+        requiredRenderHours: data.requiredRenderHours ?? null,
         workStart:      data.workStart      || '08:00',
         workEnd:        data.workEnd        || '17:00',
+        breakHours:     data.breakHours     ?? 0,
         workDays:       data.workDays       || [1, 2, 3, 4, 5],
         gracePeriod:    data.gracePeriod    ?? 5,
         isNewUser:      data.isNewUser      || false,
@@ -162,7 +185,8 @@ async function getUserSettings(uid) {
     } else {
       _settings = {
         fullName: '', username: '', department: '',
-        workStart: '08:00', workEnd: '17:00',
+        companyName: '', jobPosition: '', userType: 'employee', requiredRenderHours: null,
+        workStart: '08:00', workEnd: '17:00', breakHours: 0,
         workDays: [1, 2, 3, 4, 5],
         gracePeriod: 5, isNewUser: true,
       };
@@ -170,7 +194,8 @@ async function getUserSettings(uid) {
   } catch(e) {
     _settings = {
       fullName: '', username: '', department: '',
-      workStart: '08:00', workEnd: '17:00',
+      companyName: '', jobPosition: '', userType: 'employee', requiredRenderHours: null,
+      workStart: '08:00', workEnd: '17:00', breakHours: 0,
       workDays: [1, 2, 3, 4, 5],
       gracePeriod: 5, isNewUser: false,
     };
@@ -178,17 +203,112 @@ async function getUserSettings(uid) {
   return _settings;
 }
 
+// Applies a company's OT counting rule to raw overtime minutes.
+// Shared by dashboard.js, overtime.js and attendance.js so OT math stays consistent everywhere.
+function applyOTCountingRule(rawOTMins, rule) {
+  rule = rule || { startRule: 'immediate', delayMins: 0, incrementMins: 1 };
+  if (rawOTMins <= 0) return 0;
+  if (rule.startRule === 'immediate') return rawOTMins;
+  const delay = rule.delayMins || 0;
+  const incr  = rule.incrementMins || 1;
+  if (rawOTMins < delay) return 0;
+  const afterDelay = rawOTMins - delay;
+  return delay + Math.floor(afterDelay / incr) * incr;
+}
+
+// OT is pooled — it doesn't matter which specific day a usage "draws from". Earned OT is the sum
+// of every record's otMinutes; used OT is the sum of otUsageMins on every record that has an
+// otUsageType set (however it was declared: Full Day Leave, Half Day, or Undertime). Deleting or
+// undoing either side naturally updates the remaining total, since it's derived fresh each time
+// rather than tracked via a separate flag.
+function getOTPool(records) {
+  const earned = records.reduce((s, r) => s + (r.otMinutes || 0), 0);
+  const used   = records.reduce((s, r) => s + (r.otUsageType ? (r.otUsageMins || 0) : 0), 0);
+  return { earned, used, remaining: earned - used };
+}
+
+// Short/full display labels for OT usage codes. The stored code for Undertime stays 'LATE-OT'
+// (so old records keep working) — only the label shown to the user changed.
+function otUsageShortLabel(code) {
+  if (code === 'FL-OT')   return 'FL-OT';
+  if (code === 'HD-OT')   return 'HD-OT';
+  if (code === 'LATE-OT') return 'UT-OT';
+  return code || 'N/A';
+}
+function otUsageFullLabel(code) {
+  if (code === 'FL-OT')   return 'Full Day Leave (FL-OT)';
+  if (code === 'HD-OT')   return 'Half Day (HD-OT)';
+  if (code === 'LATE-OT') return 'Undertime (UT-OT)';
+  return code || 'N/A';
+}
+
+// Recomputes "present" records' Work Hours / Overtime using the CURRENT schedule (Work Start/End,
+// Breaktime Hours, OT rule) — or the record's own per-date override, if one was set — instead of
+// trusting whatever was stored at save time. This is what makes editing the Schedule retroactively
+// update Work Hours shown across Attendance, Overtime, and the Dashboard, without needing to
+// re-save every past record. Records that aren't "present" (absent/holiday/pending/ot-leave) are
+// left untouched — those aren't clock-based, so old data for them is unaffected.
+// Existing users with no breakHours saved yet are unaffected (treated as 0 minutes of break).
+// Time In: uses the record's own logged Time In if set, else defaults to the effective Work Start
+// (per-day override or schedule) — old records with no Time In saved fall back the same way they
+// always implicitly did, so nothing changes for them.
+// "Work Hours" reported here is the TOTAL time physically worked — actual Time In to Time Out,
+// minus break, PLUS any overtime — for every user, employee or intern. Overtime is still anchored
+// to Work End (not Time In) and returned separately too, for screens that show OT on its own.
+function applyEffectiveMinutes(records, userSettings) {
+  return records.map(rec => {
+    if (rec.status !== 'present' || !rec.timeOutDisplay) return rec;
+    const outParsed = parseTime12(rec.timeOutDisplay);
+    if (!outParsed) return rec;
+
+    const workStart = rec.customWorkStart || userSettings.workStart || '08:00';
+    const workEnd   = rec.customWorkEnd   || userSettings.workEnd   || '17:00';
+    const e = timeInputToHm(workEnd);
+    if (!e) return rec;
+
+    // Time In: what they actually logged for that day, else the effective schedule start
+    const inDisplay = rec.timeInDisplay || null;
+    const inParsed  = inDisplay ? parseTime12(inDisplay) : timeInputToHm(workStart);
+    if (!inParsed) return rec;
+
+    const breakMins = Math.max(0, Math.round((userSettings.breakHours || 0) * 60));
+    const base = new Date();
+    const toMs = new Date(base.getFullYear(), base.getMonth(), base.getDate(), outParsed.h, outParsed.m, 0).getTime();
+    const inMs = new Date(base.getFullYear(), base.getMonth(), base.getDate(), inParsed.h, inParsed.m, 0).getTime();
+    const eMs  = new Date(base.getFullYear(), base.getMonth(), base.getDate(), e.h, e.m, 0).getTime();
+
+    const rawWorkMins = Math.round((Math.min(toMs, eMs) - inMs) / 60_000);
+    const baseWorkMinutes = Math.max(0, rawWorkMins - breakMins);
+    const otRaw       = Math.max(0, Math.round((toMs - eMs) / 60_000));
+    const otMinutes   = applyOTCountingRule(otRaw, userSettings.otCountingRule);
+    const workMinutes = baseWorkMinutes + otMinutes;
+
+    return { ...rec, workMinutes, otMinutes };
+  });
+}
+
 function clearSettingsCache() { _settings = null; }
 
-// ── Page loader (fancy — full page, auth only) ──
-const loaderMessages = [
-  'Syncing your records…',
-  'Crunching overtime numbers…',
-  'Loading your workspace…',
-  'Almost there…',
-];
-let _loaderMsgIdx = 0;
-let _loaderMsgTimer = null;
+// ── Page loader — skeleton style ──
+// Keeps the topbar (hamburger, title, notif icon, live clock) and sidebar visible;
+// only the content area shows shimmering skeleton placeholders while data loads.
+// Used the same way on every tab, on both mobile and desktop.
+function skeletonMarkup() {
+  return `
+    <div class="skeleton-row">
+      <div class="skeleton-block skel-card"></div>
+      <div class="skeleton-block skel-card"></div>
+      <div class="skeleton-block skel-card"></div>
+      <div class="skeleton-block skel-card"></div>
+    </div>
+    <div class="skel-panel">
+      <div class="skeleton-block skel-bar" style="width:35%;margin-bottom:1rem"></div>
+      <div class="skeleton-block skel-bar-lg" style="margin-bottom:.6rem"></div>
+      <div class="skeleton-block skel-bar-lg" style="margin-bottom:.6rem"></div>
+      <div class="skeleton-block skel-bar-lg" style="margin-bottom:.6rem"></div>
+      <div class="skeleton-block skel-bar-lg"></div>
+    </div>`;
+}
 
 function showLoader() {
   let el = document.getElementById('page-loader');
@@ -196,32 +316,19 @@ function showLoader() {
     el = document.createElement('div');
     el.id = 'page-loader';
     el.className = 'page-loader';
-    el.innerHTML = `
-      <div class="page-loader-icon">⏱</div>
-      <div class="loader-dots">
-        <div class="loader-dot"></div>
-        <div class="loader-dot"></div>
-        <div class="loader-dot"></div>
-      </div>
-      <div class="loader-msg" id="loader-msg">${loaderMessages[0]}</div>`;
     document.body.appendChild(el);
   }
-  el.style.display = 'flex';
-  _loaderMsgIdx = 0;
-  _loaderMsgTimer = setInterval(() => {
-    _loaderMsgIdx = (_loaderMsgIdx + 1) % loaderMessages.length;
-    const msgEl = document.getElementById('loader-msg');
-    if (msgEl) msgEl.textContent = loaderMessages[_loaderMsgIdx];
-  }, 1800);
+  el.innerHTML = skeletonMarkup();
+  el.style.display = 'block';
+  el.style.opacity = '1';
 }
 
 function hideLoader() {
-  clearInterval(_loaderMsgTimer);
   const el = document.getElementById('page-loader');
   if (el) {
     el.style.opacity = '0';
     el.style.transition = 'opacity .25s';
-    setTimeout(() => { el.style.display = 'none'; el.style.opacity = ''; el.style.transition = ''; }, 280);
+    setTimeout(() => { el.style.display = 'none'; el.style.opacity = ''; el.style.transition = ''; el.innerHTML = ''; }, 280);
   }
   // Animate content in
   const content = document.querySelector('.page-content');
@@ -233,32 +340,51 @@ function hideLoader() {
   }
 }
 
-// ── Content loader (partial, stays in content area) ──
-function showContentLoader(msg) {
-  const content = document.querySelector('.page-content');
-  if (!content) return;
-  let el = document.getElementById('content-loader');
+// ── Sign out (shared across all pages) ────────
+// Shows a themed confirm dialog (same modal styling as Edit/Delete confirmations),
+// then a full-screen loading state while Firebase signs out.
+function confirmAndSignOut() {
+  let el = document.getElementById('signout-confirm-modal');
   if (!el) {
     el = document.createElement('div');
-    el.id = 'content-loader';
-    el.className = 'content-loader';
+    el.id = 'signout-confirm-modal';
+    el.className = 'modal-overlay hidden';
     el.innerHTML = `
-      <div class="loader-dots">
-        <div class="loader-dot"></div>
-        <div class="loader-dot"></div>
-        <div class="loader-dot"></div>
-      </div>
-      <div class="loader-msg">${msg || 'Loading…'}</div>`;
-    content.appendChild(el);
-  } else {
-    el.querySelector('.loader-msg').textContent = msg || 'Loading…';
-    el.style.display = 'flex';
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header">
+          <span class="modal-title">Sign Out</span>
+          <button class="modal-close" onclick="closeModal('signout-confirm-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:.88rem;color:var(--text)">Are you sure you want to sign out?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal('signout-confirm-modal')">Cancel</button>
+          <button class="btn btn-danger" onclick="executeSignOut()">Sign Out</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', e => { if (e.target === el) closeModal('signout-confirm-modal'); });
   }
+  openModal('signout-confirm-modal');
 }
 
-function hideContentLoader() {
-  const el = document.getElementById('content-loader');
-  if (el) el.style.display = 'none';
+function executeSignOut() {
+  closeModal('signout-confirm-modal');
+
+  let el = document.getElementById('signout-loader');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'signout-loader';
+    el.className = 'signout-loader';
+    el.innerHTML = `
+      <div class="spinner"></div>
+      <div class="signout-loader-msg">Signing you out…</div>`;
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+
+  auth.signOut().finally(() => { window.location.href = 'index.html'; });
 }
 
 // ── Sidebar toggle (mobile) ──────────────────
@@ -288,7 +414,16 @@ function startLiveClock(timeEl, dateEl) {
     const period = h >= 12 ? 'PM' : 'AM';
     const dh = h % 12 || 12;
     if (timeEl) timeEl.textContent = `${dh}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')} ${period}`;
-    if (dateEl) dateEl.textContent = now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    if (dateEl) {
+      const longFmt  = now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const days     = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const mo       = String(now.getMonth() + 1).padStart(2, '0');
+      const dy       = String(now.getDate()).padStart(2, '0');
+      const shortFmt = `${days[now.getDay()]}, ${mo}/${dy}/${now.getFullYear()}`;
+      dateEl.innerHTML =
+        `<span class="live-clock-date-long">${longFmt}</span>` +
+        `<span class="live-clock-date-short">${shortFmt}</span>`;
+    }
   }
   tick();
   return setInterval(tick, 1000);

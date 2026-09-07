@@ -248,10 +248,15 @@ document.addEventListener('DOMContentLoaded', () => {
   forgotEmailEl?.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-forgot-send')?.click();
   });
+
+  // Allow Enter key to submit from any Login/Sign Up field (works on phones and desktop)
+  document.querySelectorAll('#panel-login .auth-input, #panel-signup .auth-input').forEach(input => {
     input.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
-      const panel = input.closest('.auth-panel').id;
-      if (panel === 'panel-login') document.getElementById('btn-login').click();
-      else document.getElementById('btn-signup').click();
+      e.preventDefault();
+      const panel = input.closest('.auth-panel')?.id;
+      if (panel === 'panel-login') document.getElementById('btn-login')?.click();
+      else document.getElementById('btn-signup')?.click();
     });
   });
+});

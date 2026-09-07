@@ -7,6 +7,8 @@ let userSettings  = null;
 let allRecords    = [];
 let charts        = {};
 let currentPeriod = 'month';
+let customPeriodType  = 'date';
+let customPeriodValue = '';
 
 document.addEventListener('DOMContentLoaded', () => {
   showLoader();
@@ -26,13 +28,24 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.period-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentPeriod = btn.dataset.period;
+      const picker = document.getElementById('custom-period-picker');
+      if (picker) picker.classList.toggle('hidden', currentPeriod !== 'custom');
+      if (currentPeriod === 'custom') updateCustomPeriodInputType();
       renderAll();
     });
   });
 
-  document.getElementById('btn-logout').addEventListener('click', async () => {
-    await auth.signOut(); window.location.href = 'index.html';
+  document.getElementById('custom-period-type')?.addEventListener('change', () => {
+    customPeriodType = document.getElementById('custom-period-type').value;
+    updateCustomPeriodInputType();
+    renderAll();
   });
+  document.getElementById('custom-period-date')?.addEventListener('change', e => {
+    customPeriodValue = e.target.value;
+    renderAll();
+  });
+
+  document.getElementById('btn-logout').addEventListener('click', confirmAndSignOut);
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
   });
@@ -41,10 +54,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// Switches the picker's native input type (date/week/month) to match the selected granularity
+function updateCustomPeriodInputType() {
+  const input = document.getElementById('custom-period-date');
+  if (!input) return;
+  input.type = customPeriodType === 'date' ? 'date' : customPeriodType === 'week' ? 'week' : 'month';
+  input.value = '';
+  customPeriodValue = '';
+}
+
 function updateSidebarUser() {
   const name = userSettings.fullName || currentUser.email;
   document.getElementById('sidebar-username').textContent = name;
-  document.getElementById('sidebar-dept').textContent     = userSettings.department || 'Employee';
+  document.getElementById('sidebar-dept').textContent     = userSettings.jobPosition || userSettings.department || 'Employee';
   document.getElementById('sidebar-avatar').textContent   = getInitials(name);
 }
 
@@ -52,6 +74,7 @@ async function loadData() {
   const snap = await db.collection('users').doc(currentUser.uid)
                        .collection('attendance').orderBy('date', 'asc').get();
   allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  allRecords = applyEffectiveMinutes(allRecords, userSettings);
   renderAll();
 }
 
@@ -68,18 +91,41 @@ function getFilteredRecords() {
     return allRecords.filter(r => r.date.startsWith(prefix));
   }
   if (currentPeriod === 'year') return allRecords.filter(r => r.date.startsWith(`${now.getFullYear()}`));
+  if (currentPeriod === 'custom') return getCustomFilteredRecords();
   return allRecords;
 }
 
+function getCustomFilteredRecords() {
+  if (!customPeriodValue) return [];
+  if (customPeriodType === 'date')  return allRecords.filter(r => r.date === customPeriodValue);
+  if (customPeriodType === 'month') return allRecords.filter(r => r.date.startsWith(customPeriodValue));
+  if (customPeriodType === 'week') {
+    const range = isoWeekToDateRange(customPeriodValue);
+    if (!range) return [];
+    return allRecords.filter(r => r.date >= range.start && r.date <= range.end);
+  }
+  return [];
+}
+
+// Maps the current period to the chart/label "shape" it should render as
+function getChartKind() {
+  if (currentPeriod !== 'custom') return currentPeriod;
+  return customPeriodType === 'date' ? 'today' : customPeriodType;
+}
+
 function getPeriodLabel() {
+  if (currentPeriod === 'custom') {
+    return { date: 'Selected Date', week: 'Selected Week', month: 'Selected Month' }[customPeriodType] || 'Selected';
+  }
   return { today:"Today's", week:"This Week's", month:"This Month's", year:"This Year's" }[currentPeriod] || '';
 }
 
 function renderAll() {
   const recs      = getFilteredRecords();
-  const totalOT   = allRecords.reduce((s, r) => s + (r.otMinutes||0), 0);
-  const usedOT    = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes||0), 0);
-  const remaining = totalOT - usedOT;
+  const pool      = getOTPool(allRecords);
+  const totalOT   = pool.earned;
+  const usedOT    = pool.used;
+  const remaining = pool.remaining;
   const periodOT  = recs.reduce((s, r) => s + (r.otMinutes||0), 0);
 
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -97,9 +143,10 @@ function renderAll() {
 function renderLeaveSuggestor() {
   const el = document.getElementById('leave-suggestor-content');
   if (!el) return;
-  const allOT  = allRecords.reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const usedOT = allRecords.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const remOT  = allOT - usedOT;
+  const pool   = getOTPool(allRecords);
+  const allOT  = pool.earned;
+  const usedOT = pool.used;
+  const remOT  = pool.remaining;
 
   const ws = userSettings.workStart || '08:00';
   const we = userSettings.workEnd   || '17:00';
@@ -146,18 +193,19 @@ function renderOTChart(recs) {
   const ctx = document.getElementById('chart-ot');
   if (!ctx) return;
   let labels = [], data = [];
+  const kind = getChartKind();
 
-  if (currentPeriod === 'today') {
+  if (kind === 'today') {
     const rec = recs[0];
     labels = ['Work Hours','Overtime'];
     data   = [rec ? Math.round((rec.workMinutes||0)/60*10)/10 : 0,
                rec ? Math.round((rec.otMinutes||0)/60*10)/10 : 0];
-  } else if (currentPeriod === 'week') {
+  } else if (kind === 'week') {
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const dayMap = {1:0,2:1,3:2,4:3,5:4,6:5,0:6};
     labels = days; data = new Array(7).fill(0);
     recs.forEach(r => { const idx = getDayIndex(r.date); data[dayMap[idx]] += Math.round((r.otMinutes||0)/60*10)/10; });
-  } else if (currentPeriod === 'month') {
+  } else if (kind === 'month') {
     const byDate = {};
     recs.forEach(r => { byDate[r.date] = (byDate[r.date]||0) + (r.otMinutes||0); });
     const sorted = Object.keys(byDate).sort();
@@ -203,6 +251,6 @@ function renderOTTable(recs) {
       <td>${formatDateShort(r.date)}</td>
       <td><span class="badge badge-warning">${minutesToHm(r.otMinutes)}</span></td>
       <td>${r.timeOutDisplay || '—'}</td>
-      <td>${r.otUsed ? '<span class="badge badge-success">Used</span>' : '<span class="badge badge-gray">Available</span>'}</td>
+      <td>${r.otUsageType ? `<span class="badge badge-ot-leave">${otUsageShortLabel(r.otUsageType)}</span>` : '<span class="badge badge-gray">In Pool</span>'}</td>
     </tr>`).join('');
 }

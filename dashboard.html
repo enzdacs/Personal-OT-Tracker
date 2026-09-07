@@ -79,6 +79,11 @@
         <div class="user-greeting-hi" id="greeting-hi">Hi,</div>
         <div class="user-greeting-name" id="greeting-name">—</div>
         <div class="user-greeting-dept" id="greeting-dept">—</div>
+        <div class="user-greeting-company hidden" id="greeting-company">—</div>
+        <div class="user-greeting-render-hours hidden" id="greeting-render-hours">
+          <div class="greeting-render-hours-text" id="greeting-render-hours-text">—</div>
+          <div class="greeting-render-hours-sub" id="greeting-render-hours-sub">—</div>
+        </div>
       </div>
 
       <!-- Quick Stats (OT This Month removed; Leave Days Earned added) -->
@@ -139,9 +144,9 @@
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Time Out</th>
+                <th>Time In</th>
+                <th>Time Out (OT)</th>
                 <th>Work Hours</th>
-                <th>Overtime</th>
                 <th>OT Use</th>
               </tr>
             </thead>
@@ -179,8 +184,7 @@
     </div>
     <div class="modal-body">
       <p style="font-size:.84rem;color:var(--text-light);margin-bottom:1rem">
-        Record how you want to use your overtime for <strong id="use-modal-date">—</strong>.
-        Available OT: <strong id="use-modal-avail">—</strong>
+        Record how you want to use your overtime. Available OT: <strong id="use-modal-avail">—</strong>
       </p>
       <div class="form-group">
         <label class="form-label">Date of Leave / Tardiness</label>
@@ -191,17 +195,27 @@
         <select class="form-control" id="use-type" onchange="handleUseTypeChange()">
           <option value="leave">Full Day Leave (FL-OT)</option>
           <option value="halfday">Half Day (HD-OT)</option>
-          <option value="late">Late / Undertime (hours used)</option>
+          <option value="late">Undertime (UT-OT)</option>
         </select>
+      </div>
+      <div class="form-group" id="use-timein-group">
+        <label class="form-label">Time In</label>
+        <input class="form-control" type="time" id="use-timein"/>
+        <div class="form-hint">Estimated time you'll clock in that day — defaults to your Work Start.</div>
       </div>
       <div class="form-group" id="use-hours-group">
         <label class="form-label">Hours to Deduct</label>
         <input class="form-control" type="number" id="use-hours" min="0.25" step="0.25" placeholder="e.g. 1.5"/>
         <div class="form-hint" id="use-hours-hint">Enter how many OT hours to deduct (e.g. 1.5 = 1h 30m).</div>
       </div>
+      <div class="hidden" id="use-min-timeout-hint" style="font-size:.78rem;color:var(--primary);background:var(--primary-light);border-radius:8px;padding:.5rem .7rem;margin-bottom:.75rem"></div>
       <div class="form-group">
         <label class="form-label">Note (optional)</label>
         <input class="form-control" type="text" id="use-note" placeholder="e.g. Sick leave, appointment…"/>
+      </div>
+      <div class="hidden" id="use-insufficient-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:8px;padding:.6rem .75rem;font-size:.8rem;margin-top:.25rem">
+        <span>⚠️</span>
+        <span id="use-insufficient-warning-text">You don't have enough OT for this.</span>
       </div>
     </div>
     <div class="modal-footer">
@@ -213,13 +227,24 @@
 
 <!-- ══ Export Modal ══ -->
 <div class="modal-overlay hidden" id="export-modal">
-  <div class="modal" style="max-width:400px">
+  <div class="modal" style="max-width:420px">
     <div class="modal-header">
       <span class="modal-title">Export Records</span>
       <button class="modal-close" data-close-modal="export-modal">✕</button>
     </div>
     <div class="modal-body">
-      <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Export Range</label>
+        <select class="form-control" id="export-range-type" onchange="handleExportRangeChange()">
+          <option value="month">Single Month</option>
+          <option value="months">Multiple Months</option>
+          <option value="year">Single Year</option>
+          <option value="years">Multiple Years</option>
+        </select>
+      </div>
+
+      <!-- Single Month -->
+      <div class="form-row" id="export-group-month">
         <div class="form-group">
           <label class="form-label">Month</label>
           <select class="form-control" id="export-month">
@@ -234,6 +259,51 @@
           <input class="form-control" type="number" id="export-year" min="2020" max="2100"/>
         </div>
       </div>
+
+      <!-- Multiple Months (range) -->
+      <div class="form-group hidden" id="export-group-months">
+        <label class="form-label">From</label>
+        <div class="form-row" style="margin-bottom:.6rem">
+          <select class="form-control" id="export-from-month">
+            <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+            <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+            <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+          </select>
+          <input class="form-control" type="number" id="export-from-year" min="2020" max="2100"/>
+        </div>
+        <label class="form-label">To</label>
+        <div class="form-row">
+          <select class="form-control" id="export-to-month">
+            <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+            <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+            <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+          </select>
+          <input class="form-control" type="number" id="export-to-year" min="2020" max="2100"/>
+        </div>
+      </div>
+
+      <!-- Single Year -->
+      <div class="form-group hidden" id="export-group-year">
+        <label class="form-label">Year</label>
+        <input class="form-control" type="number" id="export-year-single" min="2020" max="2100" style="max-width:160px"/>
+      </div>
+
+      <!-- Multiple Years (range) -->
+      <div class="form-group hidden" id="export-group-years">
+        <div class="form-row">
+          <div>
+            <label class="form-label">From Year</label>
+            <input class="form-control" type="number" id="export-from-year-only" min="2020" max="2100"/>
+          </div>
+          <div>
+            <label class="form-label">To Year</label>
+            <input class="form-control" type="number" id="export-to-year-only" min="2020" max="2100"/>
+          </div>
+        </div>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Format</label>
         <div style="display:flex;gap:.75rem;margin-top:.25rem">
@@ -354,6 +424,32 @@
   </div>
 </div>
 
+<!-- ══ Add Choice Modal ══ -->
+<div class="modal-overlay hidden" id="add-choice-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">What would you like to add?</span>
+      <button class="modal-close" data-close-modal="add-choice-modal">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem">
+      <button class="choice-card" onclick="closeModal('add-choice-modal'); openAddModal();">
+        <span class="choice-card-icon">🕒</span>
+        <span>
+          <span class="choice-card-title">Add Attendance Log</span>
+          <span class="choice-card-sub">Log a Time In / Time Out for a specific day</span>
+        </span>
+      </button>
+      <button class="choice-card" onclick="closeModal('add-choice-modal'); openUseModal();">
+        <span class="choice-card-icon">🔁</span>
+        <span>
+          <span class="choice-card-title">Use Offset Hours</span>
+          <span class="choice-card-sub">Use your banked OT as leave, half day, or undertime</span>
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Add Record Modal ══ -->
 <div class="modal-overlay hidden" id="add-modal">
   <div class="modal">
@@ -394,10 +490,18 @@
           </div>
         </div>
       </div>
+      <div class="form-group" id="timein-group">
+        <label class="form-label">Time In</label>
+        <input class="form-control" type="time" id="edit-timein"/>
+        <div class="form-hint">Defaults to your Work Start time — edit if you clocked in at a different time.</div>
+      </div>
       <div class="form-group" id="timeout-group">
         <label class="form-label">Time Out</label>
-        <input class="form-control" type="text" id="edit-timeout" placeholder="e.g. 5:30 PM"/>
-        <div class="form-hint">Format: 5:30 PM — Overtime is calculated automatically</div>
+        <input class="form-control" type="time" id="edit-timeout"/>
+        <div class="form-hint">Tap to set your Time Out — Overtime is calculated automatically</div>
+      </div>
+      <div class="hidden" id="edit-early-timeout-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin:-.5rem 0 1rem">
+        <span>⚠️</span><span>You timed out before your work hours end. Use OT hours if you have any undertime.</span>
       </div>
       <div class="form-row" style="margin-bottom:1rem" id="calc-display-group">
         <div style="background:var(--bg);border-radius:7px;padding:.55rem .75rem;border:1px solid var(--border)">

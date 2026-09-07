@@ -346,9 +346,8 @@ async function _fireOTReminder() {
     const snap    = await db.collection('users').doc(_notifUser.uid)
                            .collection('attendance').orderBy('date','desc').get();
     const records = snap.docs.map(d => d.data());
-    const allOT   = records.reduce((s, r) => s + (r.otMinutes || 0), 0);
-    const usedOT  = records.filter(r => r.otUsed).reduce((s, r) => s + (r.otMinutes || 0), 0);
-    const remOT   = allOT - usedOT;
+    const pool    = getOTPool(records);
+    const remOT   = pool.remaining;
     if (remOT <= 0) return;
 
     const settings = _notifSettings;
