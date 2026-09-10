@@ -1,10 +1,10 @@
-const CACHE_NAME = 'otracker-v1.3';
+const CACHE_NAME = 'otracker-v1.4';
 const STATIC_FILES = [
   '/index.html', '/dashboard.html', '/attendance.html',
   '/overtime.html', '/schedule.html', '/settings.html',
   '/style.css', '/utils.js', '/dashboard.js', '/attendance.js',
   '/overtime.js', '/schedule.js', '/settings.js', '/auth.js',
-  '/notifications.js', '/firebase-config.js', '/OTracker-logo.png'
+  '/notifications.js', '/firebase-config.js', '/chatbot.js', '/OTracker-logo.png'
 ];
 
 self.addEventListener('install', e => {

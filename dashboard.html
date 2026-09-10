@@ -16,7 +16,7 @@
 
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="logo-icon">⏱</div>
+      <img class="logo-icon" src="OTracker-logo.png" alt="OTracker logo"/>
       <div>
         <div class="logo-text">OT Tracker</div>
         <div class="logo-sub">Attendance Monitor</div>
@@ -24,13 +24,13 @@
     </div>
     <nav class="sidebar-nav">
       <div class="nav-section-label">Main</div>
-      <a class="nav-item active" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
-      <a class="nav-item" href="attendance.html"><span class="nav-icon">🗓</span> Attendance</a>
-      <a class="nav-item" href="overtime.html"><span class="nav-icon">⏰</span> Overtime</a>
-      <a class="nav-item" href="schedule.html"><span class="nav-icon">📅</span> Schedule</a>
+      <a class="nav-item active" href="dashboard.html"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Dashboard</a>
+      <a class="nav-item" href="attendance.html"><span class="nav-icon"><i data-lucide="calendar-check"></i></span> Attendance</a>
+      <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
+      <a class="nav-item" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
       <div class="nav-section-label">Account</div>
-      <a class="nav-item" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
-      <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
+      <a class="nav-item" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
+      <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
     </nav>
     <div class="sidebar-footer">
       <div class="user-card-sidebar">
@@ -48,13 +48,13 @@
   <main class="main-content">
     <div class="topbar">
       <div class="topbar-left">
-        <button id="sidebar-toggle" aria-label="Menu">☰</button>
+        <button id="sidebar-toggle" aria-label="Menu"><i data-lucide="menu" class="icon"></i></button>
         <span class="page-title">Dashboard</span>
       </div>
       <div class="topbar-right">
                 <div class="notif-bell-wrap">
           <button class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
-            🔔<span class="notif-dot hidden" id="notif-dot"></span>
+            <i data-lucide="bell" class="icon"></i><span class="notif-dot hidden" id="notif-dot"></span>
           </button>
           <!-- Notification Dropdown (Facebook-style) -->
           <div class="notif-dropdown hidden" id="notif-dropdown">
@@ -84,29 +84,49 @@
           <div class="greeting-render-hours-text" id="greeting-render-hours-text">—</div>
           <div class="greeting-render-hours-sub" id="greeting-render-hours-sub">—</div>
         </div>
+        <div class="greeting-badges hidden" id="greeting-badges">
+          <div class="greeting-streak">
+            <i data-lucide="flame" class="icon"></i>
+            <span id="greeting-streak-text">—</span>
+          </div>
+          <div class="greeting-badges-icons" id="greeting-badges-icons"></div>
+          <a href="schedule.html" class="greeting-badges-link">View all badges →</a>
+        </div>
       </div>
 
       <!-- Quick Stats (OT This Month removed; Leave Days Earned added) -->
       <div class="stats-grid">
         <div class="stat-card accent-leave">
-          <div class="stat-label">Leave Days Earned</div>
-          <div class="stat-value" id="stat-leave-days">—</div>
-          <div class="stat-sub">From OT hours</div>
+          <div class="stat-card-icon"><i data-lucide="calendar-check"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">Leave Days Earned</div>
+            <div class="stat-value" id="stat-leave-days">—</div>
+            <div class="stat-sub">From OT hours</div>
+          </div>
         </div>
         <div class="stat-card accent-used">
-          <div class="stat-label">OT Used</div>
-          <div class="stat-value" id="stat-ot-used">—</div>
-          <div class="stat-sub">Total used as leave</div>
+          <div class="stat-card-icon"><i data-lucide="check-check"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">OT Used</div>
+            <div class="stat-value" id="stat-ot-used">—</div>
+            <div class="stat-sub">Total used as leave</div>
+          </div>
         </div>
         <div class="stat-card accent-rem">
-          <div class="stat-label">OT Remaining</div>
-          <div class="stat-value" id="stat-ot-rem">—</div>
-          <div class="stat-sub">Available to use</div>
+          <div class="stat-card-icon"><i data-lucide="hourglass"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">OT Remaining</div>
+            <div class="stat-value" id="stat-ot-rem">—</div>
+            <div class="stat-sub">Available to use</div>
+          </div>
         </div>
         <div class="stat-card accent-abs">
-          <div class="stat-label">Absences</div>
-          <div class="stat-value" id="stat-absences">—</div>
-          <div class="stat-sub">Total recorded</div>
+          <div class="stat-card-icon"><i data-lucide="user-x"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">Absences</div>
+            <div class="stat-value" id="stat-absences">—</div>
+            <div class="stat-sub">Total recorded</div>
+          </div>
         </div>
       </div>
 
@@ -119,15 +139,15 @@
           </div>
           <div class="toolbar-actions">
             <button class="btn btn-ghost btn-icon-label" id="btn-filter" title="Filter records">
-              <span class="btn-icon-only">🔍</span>
+              <span class="btn-icon-only"><i data-lucide="sliders-horizontal" class="icon"></i></span>
               <span class="btn-label-full">Filter</span>
             </button>
             <button class="btn btn-ghost btn-icon-label" id="btn-export" title="Export records">
-              <span class="btn-icon-only">📥</span>
+              <span class="btn-icon-only"><i data-lucide="download" class="icon"></i></span>
               <span class="btn-label-full">Export</span>
             </button>
             <button class="btn btn-primary btn-icon-label" id="btn-add-row" title="Add record">
-              <span class="btn-icon-only">＋</span>
+              <span class="btn-icon-only"><i data-lucide="plus" class="icon"></i></span>
               <span class="btn-label-full">＋ Add Record</span>
             </button>
           </div>
@@ -187,15 +207,16 @@
         Record how you want to use your overtime. Available OT: <strong id="use-modal-avail">—</strong>
       </p>
       <div class="form-group">
-        <label class="form-label">Date of Leave / Tardiness</label>
+        <label class="form-label">Date to Apply This To</label>
         <input class="form-control" type="date" id="use-leave-date"/>
+        <div class="form-hint">This is the exact date that will show the OT usage in your records — double-check it before confirming.</div>
       </div>
       <div class="form-group">
         <label class="form-label">Usage Type</label>
         <select class="form-control" id="use-type" onchange="handleUseTypeChange()">
           <option value="leave">Full Day Leave (FL-OT)</option>
           <option value="halfday">Half Day (HD-OT)</option>
-          <option value="late">Undertime (UT-OT)</option>
+          <option value="late">Offset (OS-OT)</option>
         </select>
       </div>
       <div class="form-group" id="use-timein-group">
@@ -433,17 +454,17 @@
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem">
       <button class="choice-card" onclick="closeModal('add-choice-modal'); openAddModal();">
-        <span class="choice-card-icon">🕒</span>
+        <span class="choice-card-icon"><i data-lucide="clock" class="icon"></i></span>
         <span>
           <span class="choice-card-title">Add Attendance Log</span>
           <span class="choice-card-sub">Log a Time In / Time Out for a specific day</span>
         </span>
       </button>
       <button class="choice-card" onclick="closeModal('add-choice-modal'); openUseModal();">
-        <span class="choice-card-icon">🔁</span>
+        <span class="choice-card-icon"><i data-lucide="repeat" class="icon"></i></span>
         <span>
           <span class="choice-card-title">Use Offset Hours</span>
-          <span class="choice-card-sub">Use your banked OT as leave, half day, or undertime</span>
+          <span class="choice-card-sub">Use your banked OT as leave, half day, or offset</span>
         </span>
       </button>
     </div>
@@ -474,7 +495,7 @@
       <div class="form-group" id="work-hours-group">
         <div class="form-label-row" style="margin-bottom:.5rem">
           <label class="form-label" style="margin-bottom:0">Work Hours</label>
-          <button type="button" class="work-edit-btn-visible" onclick="openWorkHoursEditor()" title="Customize work hours for this date only">✏️ Override</button>
+          <button type="button" class="work-edit-btn-visible" onclick="openWorkHoursEditor()" title="Customize work hours for this date only"><i data-lucide="pencil" class="icon"></i> Override</button>
         </div>
         <div id="work-hours-editor" class="hidden" style="background:var(--bg);border-radius:8px;padding:.75rem;margin-bottom:.5rem;border:1px solid var(--border)">
           <div style="font-size:.75rem;font-weight:600;color:var(--text-light);margin-bottom:.5rem">Custom hours for this date only</div>
@@ -501,7 +522,7 @@
         <div class="form-hint">Tap to set your Time Out — Overtime is calculated automatically</div>
       </div>
       <div class="hidden" id="edit-early-timeout-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin:-.5rem 0 1rem">
-        <span>⚠️</span><span>You timed out before your work hours end. Use OT hours if you have any undertime.</span>
+        <span>⚠️</span><span>You timed out before your work hours end. Use OT hours if you have any offset.</span>
       </div>
       <div class="form-row" style="margin-bottom:1rem" id="calc-display-group">
         <div style="background:var(--bg);border-radius:7px;padding:.55rem .75rem;border:1px solid var(--border)">
@@ -531,11 +552,14 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
 <script src="utils.js"></script>
 <script src="notifications.js"></script>
 <script src="dashboard.js"></script>
+<script src="chatbot.js"></script>
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
 </script>
+<script>if (window.lucide) lucide.createIcons();</script>
 </body>
 </html>

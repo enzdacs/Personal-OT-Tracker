@@ -54,7 +54,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el) { el.addEventListener('input', markNotifDirty); el.addEventListener('change', markNotifDirty); }
   });
+  document.getElementById('n-timeout-remind-freq')?.addEventListener('change', handleTimeoutFreqChange);
 });
+
+function handleTimeoutFreqChange() {
+  const grp = document.getElementById('n-timeout-custom-group');
+  const toFreqEl = document.getElementById('n-timeout-remind-freq');
+  if (grp && toFreqEl) grp.classList.toggle('hidden', toFreqEl.value !== 'custom');
+}
 
 let currentUser  = null;
 let userSettings = null;
@@ -108,8 +115,7 @@ function populateForm() {
   if (toCustomEl)  toCustomEl.value  = ns.timeoutCustomMins || 60;
 
   // Show/hide custom group based on current value
-  const grp = document.getElementById('n-timeout-custom-group');
-  if (grp && toFreqEl) grp.style.display = toFreqEl.value === 'custom' ? 'block' : 'none';
+  handleTimeoutFreqChange();
 
   // Disable save buttons until something changes
   _profileDirty = false;

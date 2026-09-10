@@ -15,7 +15,7 @@
 <div id="app-shell">
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="logo-icon">⏱</div>
+      <img class="logo-icon" src="OTracker-logo.png" alt="OTracker logo"/>
       <div>
         <div class="logo-text">OT Tracker</div>
         <div class="logo-sub">Attendance Monitor</div>
@@ -23,13 +23,13 @@
     </div>
     <nav class="sidebar-nav">
       <div class="nav-section-label">Main</div>
-      <a class="nav-item" href="dashboard.html"><span class="nav-icon">📋</span> Dashboard</a>
-      <a class="nav-item active" href="attendance.html"><span class="nav-icon">🗓</span> Attendance</a>
-      <a class="nav-item" href="overtime.html"><span class="nav-icon">⏰</span> Overtime</a>
-      <a class="nav-item" href="schedule.html"><span class="nav-icon">📅</span> Schedule</a>
+      <a class="nav-item" href="dashboard.html"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Dashboard</a>
+      <a class="nav-item active" href="attendance.html"><span class="nav-icon"><i data-lucide="calendar-check"></i></span> Attendance</a>
+      <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
+      <a class="nav-item" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
       <div class="nav-section-label">Account</div>
-      <a class="nav-item" href="settings.html"><span class="nav-icon">⚙️</span> Settings</a>
-      <button class="nav-item" id="btn-logout"><span class="nav-icon">🚪</span> Sign Out</button>
+      <a class="nav-item" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
+      <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
     </nav>
     <div class="sidebar-footer">
       <div class="user-card-sidebar">
@@ -47,13 +47,13 @@
   <main class="main-content">
     <div class="topbar">
       <div class="topbar-left">
-        <button id="sidebar-toggle" aria-label="Menu">☰</button>
+        <button id="sidebar-toggle" aria-label="Menu"><i data-lucide="menu" class="icon"></i></button>
         <span class="page-title">Attendance</span>
       </div>
       <div class="topbar-right">
                 <div class="notif-bell-wrap">
           <button class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
-            🔔<span class="notif-dot hidden" id="notif-dot"></span>
+            <i data-lucide="bell" class="icon"></i><span class="notif-dot hidden" id="notif-dot"></span>
           </button>
           <!-- Notification Dropdown (Facebook-style) -->
           <div class="notif-dropdown hidden" id="notif-dropdown">
@@ -101,29 +101,44 @@
       <!-- Summary Cards -->
       <div class="stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
         <div class="stat-card accent-used">
-          <div class="stat-label">Present</div>
-          <div class="stat-value" id="a-present">—</div>
-          <div class="stat-sub">Days attended</div>
+          <div class="stat-card-icon"><i data-lucide="user-check"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">Present</div>
+            <div class="stat-value" id="a-present">—</div>
+            <div class="stat-sub">Days attended</div>
+          </div>
         </div>
         <div class="stat-card accent-abs">
-          <div class="stat-label">Absent</div>
-          <div class="stat-value" id="a-absent">—</div>
-          <div class="stat-sub">Days missed</div>
+          <div class="stat-card-icon"><i data-lucide="user-x"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">Absent</div>
+            <div class="stat-value" id="a-absent">—</div>
+            <div class="stat-sub">Days missed</div>
+          </div>
         </div>
         <div class="stat-card accent-holiday">
-          <div class="stat-label">Holidays</div>
-          <div class="stat-value" id="a-holidays">—</div>
-          <div class="stat-sub">Tagged holidays</div>
+          <div class="stat-card-icon"><i data-lucide="flag"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">Holidays</div>
+            <div class="stat-value" id="a-holidays">—</div>
+            <div class="stat-sub">Tagged holidays</div>
+          </div>
         </div>
         <div class="stat-card accent-rem">
-          <div class="stat-label">Attendance Rate</div>
-          <div class="stat-value" id="a-rate">—</div>
-          <div class="stat-sub">Period percentage</div>
+          <div class="stat-card-icon"><i data-lucide="percent"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">Attendance Rate</div>
+            <div class="stat-value" id="a-rate">—</div>
+            <div class="stat-sub">Period percentage</div>
+          </div>
         </div>
         <div class="stat-card accent-ot-leave">
-          <div class="stat-label">Filed Leave via OT</div>
-          <div class="stat-value" id="a-ot-leave">—</div>
-          <div class="stat-sub">Days (FL-OT)</div>
+          <div class="stat-card-icon"><i data-lucide="plane"></i></div>
+          <div class="stat-card-body">
+            <div class="stat-label">Filed Leave via OT</div>
+            <div class="stat-value" id="a-ot-leave">—</div>
+            <div class="stat-sub">Days (FL-OT)</div>
+          </div>
         </div>
       </div>
 
@@ -179,11 +194,14 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="firebase-config.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
 <script src="utils.js"></script>
 <script src="notifications.js"></script>
 <script src="attendance.js"></script>
+<script src="chatbot.js"></script>
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
 </script>
+<script>if (window.lucide) lucide.createIcons();</script>
 </body>
 </html>
