@@ -227,18 +227,18 @@ function getOTPool(records) {
   return { earned, used, remaining: earned - used };
 }
 
-// Short/full display labels for OT usage codes. The stored code for Undertime stays 'LATE-OT'
-// (so old records keep working) — only the label shown to the user changed.
+// Short/full display labels for OT usage codes. The stored code stays 'LATE-OT' (so old
+// records keep working) — only the label shown to the user changed, from Undertime to Offset.
 function otUsageShortLabel(code) {
   if (code === 'FL-OT')   return 'FL-OT';
   if (code === 'HD-OT')   return 'HD-OT';
-  if (code === 'LATE-OT') return 'UT-OT';
+  if (code === 'LATE-OT') return 'OS-OT';
   return code || 'N/A';
 }
 function otUsageFullLabel(code) {
   if (code === 'FL-OT')   return 'Full Day Leave (FL-OT)';
   if (code === 'HD-OT')   return 'Half Day (HD-OT)';
-  if (code === 'LATE-OT') return 'Undertime (UT-OT)';
+  if (code === 'LATE-OT') return 'Offset (OS-OT)';
   return code || 'N/A';
 }
 
@@ -287,7 +287,96 @@ function applyEffectiveMinutes(records, userSettings) {
   });
 }
 
+// ── Badges & Streaks ──────────────────────────
+// One source of truth for badge metadata, shared by the Badges page and the dashboard
+// welcome card. Badges are entirely derived from attendance records — nothing is stored
+// or manually awarded, so there's no separate data to keep in sync or go stale.
+const BADGE_DEFS = [
+  { id: 'holiday-1', name: 'Holiday Hustler', icon: 'flag',           color: '#F59E0B', desc: 'Worked a day outside your regular schedule' },
+  { id: 'holiday-3', name: 'Holiday Warrior', icon: 'flag',           color: '#EA580C', desc: 'Worked 3+ days outside your regular schedule' },
+  { id: 'week',      name: 'Perfect Week',    icon: 'calendar-check', color: '#3B82F6', desc: 'Present every scheduled day in a full week' },
+  { id: 'month',     name: 'Perfect Month',   icon: 'calendar-days',  color: '#8B5CF6', desc: 'Present every scheduled day in a full month' },
+  { id: 'year',      name: 'Perfect Year',    icon: 'trophy',         color: '#EAB308', desc: 'Present every scheduled day in a full year' },
+  { id: 'streak-7',  name: 'Week Streak',     icon: 'flame',          color: '#F97316', desc: '7+ consecutive scheduled days present' },
+  { id: 'streak-30', name: 'Month Streak',    icon: 'flame',          color: '#DC2626', desc: '30+ consecutive scheduled days present' },
+];
+
+function computeBadges(records, userSettings) {
+  const workDays = userSettings.workDays || [1, 2, 3, 4, 5];
+  const today = getDateKey();
+
+  const presentDates = new Set(records.filter(r => r.status === 'present' || r.status === 'ot-leave').map(r => r.date));
+  const absentDates  = new Set(records.filter(r => r.status === 'absent').map(r => r.date));
+
+  // "Holiday work" — present on a day-of-week that isn't part of the regular schedule
+  const holidayCount = records.filter(r =>
+    (r.status === 'present') && !workDays.includes(getDayIndex(r.date))
+  ).length;
+
+  const emptyResult = { current: 0, longest: 0, holidayCount, perfectWeeks: 0, perfectMonths: 0, perfectYears: 0, earned: {}, counts: {} };
+  const allDates = records.map(r => r.date).sort();
+  if (allDates.length === 0) return finalizeBadges(emptyResult);
+
+  // Walk every calendar day from the earliest record to today, keeping only scheduled work days
+  let cursor = new Date(allDates[0] + 'T00:00:00');
+  const endDate = new Date(today + 'T00:00:00');
+  const scheduledDays = [];
+  while (cursor <= endDate) {
+    const key = getDateKey(cursor);
+    if (workDays.includes(cursor.getDay())) scheduledDays.push(key);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  // Longest streak ever, and current streak (trailing run up to today; a day with no
+  // record yet — e.g. later today — is skipped rather than treated as a break)
+  let longest = 0, running = 0;
+  scheduledDays.forEach(day => {
+    if (presentDates.has(day))      { running += 1; longest = Math.max(longest, running); }
+    else if (absentDates.has(day))  { running = 0; }
+  });
+  let current = 0;
+  for (let i = scheduledDays.length - 1; i >= 0; i--) {
+    const day = scheduledDays[i];
+    if (presentDates.has(day)) current++;
+    else if (absentDates.has(day)) break;
+  }
+
+  // Perfect week/month/year — only count periods that have FULLY elapsed (exclude the
+  // current, still-in-progress week/month/year so it can't be prematurely "perfect")
+  const curWeek = weekStart(today), curMonth = today.slice(0, 7), curYear = today.slice(0, 4);
+  const weekMap = {}, monthMap = {}, yearMap = {};
+  scheduledDays.forEach(day => {
+    const wk = weekStart(day), mo = day.slice(0, 7), yr = day.slice(0, 4);
+    if (wk !== curWeek)   (weekMap[wk]   ||= []).push(day);
+    if (mo !== curMonth)  (monthMap[mo]  ||= []).push(day);
+    if (yr !== curYear)   (yearMap[yr]   ||= []).push(day);
+  });
+  const countPerfect = map => Object.values(map).filter(days => days.length > 0 && days.every(d => presentDates.has(d))).length;
+
+  return finalizeBadges({
+    current, longest, holidayCount,
+    perfectWeeks:  countPerfect(weekMap),
+    perfectMonths: countPerfect(monthMap),
+    perfectYears:  countPerfect(yearMap),
+  });
+}
+
+function finalizeBadges(r) {
+  const counts = {
+    'holiday-1': r.holidayCount, 'holiday-3': r.holidayCount,
+    'week': r.perfectWeeks, 'month': r.perfectMonths, 'year': r.perfectYears,
+    'streak-7': r.longest, 'streak-30': r.longest,
+  };
+  const earned = {
+    'holiday-1': r.holidayCount >= 1, 'holiday-3': r.holidayCount >= 3,
+    'week': r.perfectWeeks >= 1, 'month': r.perfectMonths >= 1, 'year': r.perfectYears >= 1,
+    'streak-7': r.longest >= 7, 'streak-30': r.longest >= 30,
+  };
+  return { ...r, earned, counts };
+}
+
 function clearSettingsCache() { _settings = null; }
+
 
 // ── Page loader — skeleton style ──
 // Keeps the topbar (hamburger, title, notif icon, live clock) and sidebar visible;
@@ -367,6 +456,46 @@ function confirmAndSignOut() {
     el.addEventListener('click', e => { if (e.target === el) closeModal('signout-confirm-modal'); });
   }
   openModal('signout-confirm-modal');
+}
+
+// ── Generic confirm dialog (shared) ───────────
+// Themed yes/no popup, matching the app's other modals. Returns a Promise<boolean> —
+// true if the user confirmed, false if they cancelled or dismissed it.
+function showConfirmDialog({ title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false }) {
+  return new Promise(resolve => {
+    let el = document.getElementById('generic-confirm-modal');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'generic-confirm-modal';
+      el.className = 'modal-overlay hidden';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = `
+      <div class="modal" style="max-width:400px">
+        <div class="modal-header">
+          <span class="modal-title">${title}</span>
+          <button class="modal-close" data-act="cancel">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:.88rem;color:var(--text)">${message}</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-act="cancel">${cancelLabel}</button>
+          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-act="confirm">${confirmLabel}</button>
+        </div>
+      </div>`;
+    openModal('generic-confirm-modal');
+
+    const finish = (result) => {
+      el.onclick = null;
+      closeModal('generic-confirm-modal');
+      resolve(result);
+    };
+    el.querySelectorAll('[data-act]').forEach(btn => {
+      btn.addEventListener('click', () => finish(btn.dataset.act === 'confirm'), { once: true });
+    });
+    el.onclick = (e) => { if (e.target === el) finish(false); };
+  });
 }
 
 function executeSignOut() {

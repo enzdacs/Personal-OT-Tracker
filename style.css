@@ -144,11 +144,10 @@ body {
 }
 .sidebar-logo .logo-icon {
   width: 34px; height: 34px;
-  background: var(--primary);
   border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.1rem;
   flex-shrink: 0;
+  object-fit: cover;
+  display: block;
 }
 .sidebar-logo .logo-text { font-size: .9rem; font-weight: 700; color: #F1F5F9; line-height: 1.2; }
 .sidebar-logo .logo-sub  { font-size: .68rem; color: #94A3B8; }
@@ -170,7 +169,14 @@ body {
 }
 .nav-item:hover { background: rgba(255,255,255,.05); color: #E2E8F0; }
 .nav-item.active { background: rgba(59,130,246,.18); color: var(--primary); border-right: 3px solid var(--primary); }
-.nav-item .nav-icon { font-size: 1.05rem; width: 18px; text-align: center; flex-shrink: 0; }
+.nav-item .nav-icon { width: 18px; height:18px; text-align: center; flex-shrink: 0; display:inline-flex; align-items:center; justify-content:center; }
+.nav-item .nav-icon svg { width: 18px; height: 18px; stroke-width: 2px; }
+
+/* Generic inline icon sizing — use <span class="icon"><i data-lucide="x"></i></span>.
+   Lucide SVGs use stroke="currentColor" so they inherit whatever text color surrounds them. */
+.icon { display: inline-flex; align-items: center; justify-content: center; width: 1em; height: 1em; vertical-align: -3px; }
+.icon svg { width: 1em; height: 1em; }
+button .icon, .btn .icon { vertical-align: -2px; }
 .sidebar-footer { padding: 1rem 1.2rem; border-top: 1px solid rgba(255,255,255,.07); flex-shrink: 0; }
 .user-card-sidebar { display: flex; align-items: center; gap: .6rem; overflow: hidden; }
 .user-avatar {
@@ -216,38 +222,72 @@ body {
 .ot-banner-timer { font-size: 2.2rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 
 .stats-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: .85rem; margin-bottom: 1.25rem;
 }
-/* Base stat card — consistent left accent border for all */
+/* Base stat card — icon chip carries the accent color; value text stays neutral/readable */
 .stat-card {
   background: var(--card); border-radius: var(--radius);
-  border: 1px solid var(--border); border-left-width: 3px;
+  border: 1px solid var(--border);
   padding: 1rem 1.1rem; box-shadow: var(--shadow);
+  display: flex; align-items: flex-start; gap: .8rem;
 }
-.stat-label { font-size: .75rem; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .3rem; }
-.stat-value { font-size: 1.55rem; font-weight: 700; line-height: 1.2; margin-bottom: .2rem; }
+.stat-card-icon {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg); color: var(--text-light);
+}
+.stat-card-icon svg { width: 19px; height: 19px; stroke-width: 2px; }
+.stat-card-body { min-width: 0; flex: 1; }
+.stat-label { font-size: .72rem; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: .04em; margin-bottom: .25rem; }
+.stat-value { font-size: 1.4rem; font-weight: 700; line-height: 1.2; margin-bottom: .15rem; color: var(--text); }
 .stat-sub   { font-size: .7rem; color: var(--text-light); }
-/* Accent classes — set left border color AND value color */
-.accent-ot   { border-left-color: var(--accent); }
-.accent-ot   .stat-value { color: var(--accent); }
-.accent-used { border-left-color: var(--success); }
-.accent-used .stat-value { color: var(--success); }
-.accent-rem  { border-left-color: var(--primary); }
-.accent-rem  .stat-value { color: var(--primary); }
-.accent-abs  { border-left-color: var(--danger); }
-.accent-abs  .stat-value { color: var(--danger); }
-/* Default for cards without a named accent class */
-.stat-card:not([class*="accent-"]) { border-left-color: var(--border); }
+/* Accent classes — set the icon chip's background + icon color only */
+.accent-ot   .stat-card-icon { background: rgba(245,158,11,.12); color: var(--accent); }
+.accent-used .stat-card-icon { background: rgba(16,185,129,.12); color: var(--success); }
+.accent-rem  .stat-card-icon { background: rgba(59,130,246,.12); color: var(--primary); }
+.accent-abs  .stat-card-icon { background: rgba(239,68,68,.12);  color: var(--danger); }
 /* Extended accent colors */
-.accent-holiday { border-left-color: #7C3AED; }
-.accent-holiday .stat-value { color: #7C3AED; }
-.accent-ot-leave { border-left-color: #CA8A04; }
-.accent-ot-leave .stat-value { color: #CA8A04; }
-.accent-leave   { border-left-color: var(--success); }
-.accent-leave   .stat-value { color: var(--success); }
+.accent-holiday  .stat-card-icon { background: rgba(124,58,237,.12); color: #7C3AED; }
+.accent-ot-leave .stat-card-icon { background: rgba(202,138,4,.12);  color: #CA8A04; }
+.accent-leave    .stat-card-icon { background: rgba(16,185,129,.12); color: var(--success); }
 .stat-card-action { width: 100%; margin-top: .65rem; padding: .4rem; font-size: .78rem; }
 .stat-card-action:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Badges & Streaks ── */
+.streak-banner { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.streak-banner-item {
+  flex: 1 1 180px; display: flex; align-items: center; gap: .75rem;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: .9rem 1.1rem;
+}
+.streak-banner-icon {
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.streak-banner-icon svg { width: 22px; height: 22px; stroke-width: 2px; }
+.streak-flame  { background: rgba(249,115,22,.14); color: #F97316; }
+.streak-trophy { background: rgba(234,179,8,.14); color: #EAB308; }
+.streak-banner-value { font-size: 1.35rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+.streak-banner-label { font-size: .72rem; color: var(--text-light); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+
+.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .9rem; }
+.badge-card {
+  border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1rem;
+  text-align: center; background: var(--card); transition: all .15s;
+}
+.badge-card.earned  { border-color: var(--badge-color, var(--primary)); }
+.badge-card.locked  { opacity: .55; filter: grayscale(.6); }
+.badge-icon-ring {
+  width: 56px; height: 56px; border-radius: 50%; margin: 0 auto .65rem;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--badge-bg, var(--bg)); color: var(--badge-color, var(--text-light));
+  border: 2px solid var(--badge-color, var(--border));
+}
+.badge-icon-ring svg { width: 26px; height: 26px; stroke-width: 2px; }
+.badge-name  { font-size: .84rem; font-weight: 700; color: var(--text); margin-bottom: .2rem; }
+.badge-desc  { font-size: .72rem; color: var(--text-light); line-height: 1.35; margin-bottom: .4rem; }
+.badge-count { font-size: .72rem; font-weight: 700; color: var(--badge-color, var(--primary)); }
 
 .choice-card {
   display: flex; align-items: center; gap: .85rem; width: 100%;
@@ -446,7 +486,7 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
 }
 .auth-card { background: var(--card); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3); width: 100%; max-width: 420px; overflow: hidden; }
 .auth-header { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 2rem; text-align: center; color: #fff; }
-.auth-header .logo { font-size: 2.2rem; margin-bottom: .5rem; }
+.auth-header .logo { width: 64px; height: 64px; border-radius: 14px; margin: 0 auto .5rem; display: block; }
 .auth-header h1 { font-size: 1.2rem; font-weight: 700; }
 .auth-header p  { font-size: .78rem; opacity: .8; margin-top: .2rem; }
 .auth-tabs { display: flex; border-bottom: 1px solid var(--border); }
@@ -784,6 +824,21 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
   color: #94A3B8;
   font-weight: 400;
 }
+.greeting-badges {
+  margin-top: .75rem; padding-top: .65rem;
+  border-top: 1px solid rgba(148,163,184,.25);
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+}
+.greeting-streak { display: flex; align-items: center; gap: .35rem; font-size: .82rem; font-weight: 700; color: #FDBA74; }
+.greeting-streak .icon { color: #F97316; }
+.greeting-badges-icons { display: flex; gap: .35rem; }
+.greeting-badge-chip {
+  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--badge-bg); color: var(--badge-color); border: 1px solid var(--badge-color);
+}
+.greeting-badge-chip svg { width: 13px; height: 13px; stroke-width: 2.25px; }
+.greeting-badges-link { font-size: .72rem; color: #93C5FD; text-decoration: none; margin-left: auto; }
+.greeting-badges-link:hover { text-decoration: underline; }
 
 /* ── Row clickable ── */
 .row-clickable { cursor: pointer; }
@@ -801,6 +856,15 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .settings-layout { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
+  /* Work Hours / Overtime display boxes: stay side-by-side even on phones to save
+     vertical space — these are read-only summaries, not inputs needing tap-target room */
+  #calc-display-group, #em-calc-group {
+    grid-template-columns: 1fr 1fr !important;
+    gap: .5rem;
+  }
+  #calc-display-group > div, #em-calc-group > div {
+    padding: .5rem .6rem;
+  }
   .page-content { padding: 1rem; }
   .ot-banner-timer { font-size: 1.6rem; }
   .analytics-grid { grid-template-columns: 1fr; }
@@ -837,4 +901,67 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
   /* Swap the long date for a compact "Day, MM/DD/YYYY" format */
   .live-clock-date-long  { display: none; }
   .live-clock-date-short { display: inline; }
+
+  /* Work Hours / Overtime display boxes need to shrink further to stay on one line */
+  #calc-display-group, #em-calc-group { gap: .35rem; }
+  #calc-display-group > div, #em-calc-group > div { padding: .4rem .45rem; }
+  #calc-display-group div[id$="-display"], #em-calc-group div[id$="-display"] { font-size: .82rem; }
+}
+
+/* ── Chatbot ── */
+.chatbot-bubble {
+  background: none; border: none; cursor: pointer;
+  font-size: 1.2rem; padding: .3rem .4rem; border-radius: 7px;
+  line-height: 1; transition: background .15s;
+  display: flex; align-items: center; color: var(--text-light);
+}
+.chatbot-bubble:hover { background: var(--bg); color: var(--primary); }
+
+.chatbot-panel {
+  position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 950;
+  width: 360px; max-width: calc(100vw - 2rem); height: 520px; max-height: calc(100vh - 6rem);
+  background: var(--card); border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(15,23,42,.18);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.chatbot-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1.1rem; border-bottom: 1px solid var(--border);
+  font-size: .88rem; font-weight: 700; color: var(--text); flex-shrink: 0;
+}
+.chatbot-panel-header span { display: flex; align-items: center; gap: .5rem; }
+.chatbot-panel-header .icon { color: var(--primary); }
+.chatbot-log { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .6rem; }
+.chatbot-msg {
+  max-width: 85%; padding: .55rem .75rem; border-radius: 12px;
+  font-size: .82rem; line-height: 1.4; white-space: pre-wrap; word-break: break-word;
+}
+.chatbot-msg-bot  { align-self: flex-start; background: var(--bg); color: var(--text); border-bottom-left-radius: 4px; }
+.chatbot-msg-user { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+.chatbot-typing { display: flex; gap: .3rem; padding: 0 1rem .6rem; flex-shrink: 0; }
+.chatbot-typing.hidden { display: none; }
+.chatbot-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text-light);
+  animation: chatbotDotPulse 1.2s infinite ease-in-out;
+}
+.chatbot-dot:nth-child(2) { animation-delay: .15s; }
+.chatbot-dot:nth-child(3) { animation-delay: .3s; }
+@keyframes chatbotDotPulse { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
+.chatbot-input-row {
+  display: flex; gap: .5rem; padding: .75rem; border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.chatbot-input-row input {
+  flex: 1; padding: .5rem .7rem; border: 1px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: .82rem; outline: none; background: var(--card); color: var(--text);
+}
+.chatbot-input-row input:focus { border-color: var(--primary); }
+.chatbot-confirm-card {
+  align-self: stretch; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: .75rem; font-size: .8rem;
+}
+.chatbot-confirm-title { color: var(--text); margin-bottom: .6rem; font-weight: 600; }
+.chatbot-confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+
+@media (max-width: 480px) {
+  .chatbot-panel { right: .5rem; bottom: .5rem; width: calc(100vw - 1rem); height: calc(100vh - 5rem); }
 }

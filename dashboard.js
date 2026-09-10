@@ -87,6 +87,7 @@ function updateSidebarUser() {
     gCompany.classList.toggle('hidden', !company);
   }
   updateRenderHoursDisplay();
+  updateBadgesDisplay();
 }
 
 // ── Render Hours (interns) ───────────────────
@@ -108,6 +109,27 @@ function updateRenderHoursDisplay() {
     `${renderedHours} of ${required} hrs rendered`;
   document.getElementById('greeting-render-hours-sub').textContent =
     `${remaining} hrs remaining`;
+}
+
+// ── Badges & Streaks (welcome card summary) ──
+function updateBadgesDisplay() {
+  const wrap = document.getElementById('greeting-badges');
+  if (!wrap || allRecords.length === 0) return;
+
+  const result = computeBadges(allRecords, userSettings);
+  wrap.classList.remove('hidden');
+  document.getElementById('greeting-streak-text').textContent =
+    result.current > 0 ? `${result.current}-day streak` : 'No active streak';
+
+  const earnedBadges = BADGE_DEFS.filter(b => result.earned[b.id]);
+  const iconsEl = document.getElementById('greeting-badges-icons');
+  if (iconsEl) {
+    iconsEl.innerHTML = earnedBadges.slice(0, 5).map(b => `
+      <span class="greeting-badge-chip" style="--badge-color:${b.color};--badge-bg:${b.color}22" title="${b.name}">
+        <i data-lucide="${b.icon}"></i>
+      </span>`).join('');
+    if (window.lucide) lucide.createIcons();
+  }
 }
 
 // ── New-user onboarding ──────────────────────
@@ -194,6 +216,7 @@ async function loadRecords() {
   renderTable();
   renderStats();
   updateRenderHoursDisplay();
+  updateBadgesDisplay();
 }
 
 // ── Absence watcher: mark absent at 11 PM if no time out ──
@@ -480,7 +503,7 @@ function handleUseTypeChange() {
     if (timeInGroup) timeInGroup.style.display = 'block';
   } else {
     if (hg)   hg.style.display = 'block';
-    if (hint) hint.textContent = 'Enter how many OT hours to deduct for undertime.';
+    if (hint) hint.textContent = 'Enter how many OT hours to deduct for offset.';
     const hoursEl = document.getElementById('use-hours');
     if (hoursEl) hoursEl.value = '';
     if (timeInGroup) timeInGroup.style.display = 'block';
@@ -547,14 +570,25 @@ async function confirmUseOT() {
     return;
   }
 
+  // Warn before silently overwriting an existing day's record
+  const leaveRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(leaveDate);
+  const leaveSnap = await leaveRef.get();
+  if (leaveSnap.exists) {
+    const proceed = await showConfirmDialog({
+      title: 'Record Already Exists',
+      message: `A record for <strong>${formatDateLong(leaveDate)}</strong> already exists. Applying this OT usage will modify it. Continue?`,
+      confirmLabel: 'Continue',
+      danger: true,
+    });
+    if (!proceed) return;
+  }
+
   const btn = document.getElementById('btn-confirm-use');
   btn.disabled = true; btn.textContent = 'Saving…';
 
   try {
     // OT is pooled — usage doesn't draw from any one specific "source" day, it's just declared
     // against the total available. The transaction lives entirely on the leave-date record.
-    const leaveRef = db.collection('users').doc(currentUser.uid).collection('attendance').doc(leaveDate);
-    const leaveSnap = await leaveRef.get();
 
     if (usageLabel === 'FL-OT') {
       // No work happens that day — a flat credit, Time Out shows "N/A"
@@ -596,7 +630,7 @@ async function confirmUseOT() {
       }
     }
 
-    showToast(`OT logged as ${otUsageShortLabel(usageLabel)} ✓`, 'success');
+    showToast(`OT logged as ${otUsageShortLabel(usageLabel)} on ${formatDateShort(leaveDate)} ✓`, 'success');
     closeModal('use-modal');
     await loadRecords();
   } catch(e) {
@@ -642,7 +676,7 @@ async function executeUndoUse(id) {
       await ref.delete();
       showToast('OT usage undone — leave day removed.', 'default');
     } else {
-      // Half Day / Undertime — keep the real attendance logged that day, just drop the usage
+      // Half Day / Offset (stored code LATE-OT) — keep the real attendance logged that day, just drop the usage
       await ref.update({
         otUsageType: firebase.firestore.FieldValue.delete(),
         otUsageMins: firebase.firestore.FieldValue.delete(),
@@ -967,6 +1001,15 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
         <span class="text-sm" style="color:var(--text-light)">OT Used</span>
         <span class="badge ${rec.otUsageType?'badge-success':'badge-gray'}">${rec.otUsageType ? `Yes (${formatDateShort(rec.date)})` : 'No'}</span>
       </div>
+      ${rec.otUsageType ? `
+      <div class="flex justify-between items-center">
+        <span class="text-sm" style="color:var(--text-light)">Usage Type</span>
+        <strong>${otUsageFullLabel(rec.otUsageType)}</strong>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm" style="color:var(--text-light)">Hours Used</span>
+        <strong>${minutesToHm(rec.otUsageMins || 0)}</strong>
+      </div>` : ''}
       ${isOTLeave && rec.otSourceId ? `
       <div class="flex justify-between items-center">
         <span class="text-sm" style="color:var(--text-light)">OT Source</span>
@@ -1067,7 +1110,7 @@ function renderEditMode(rec, titleEl, bodyEl, footerEl) {
       <span>⚠️</span><span id="em-undertime-warning-text"></span>
     </div>
     <div class="hidden" id="em-early-timeout-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin:-.5rem 0 1rem">
-      <span>⚠️</span><span>You timed out before your work hours end. Use OT hours if you have any undertime.</span>
+      <span>⚠️</span><span>You timed out before your work hours end. Use OT hours if you have any offset.</span>
     </div>
     <div class="form-row" style="margin-bottom:1rem" id="em-calc-group">
       <div style="background:var(--bg);border-radius:7px;padding:.55rem .75rem;border:1px solid var(--border)">
@@ -1083,15 +1126,16 @@ function renderEditMode(rec, titleEl, bodyEl, footerEl) {
       <label class="form-label">Note (optional)</label>
       <textarea class="form-control" id="em-note" rows="2" style="resize:vertical">${rec.note || ''}</textarea>
     </div>
-    ${rec.otUsageType ? `
     <div class="form-group" style="background:var(--bg);border-radius:8px;padding:.85rem;border:1px solid var(--border)">
-      <div style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:.6rem">OT Usage</div>
+      <div style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:.2rem">OT Usage</div>
+      <div style="font-size:.72rem;color:var(--text-light);margin-bottom:.6rem">${rec.otUsageType ? 'Change or remove the OT usage declared for this day.' : "Forgot to use your offset hours for this day? You can declare it here."}</div>
       <div class="form-group" style="margin-bottom:.6rem">
         <label class="form-label" style="font-size:.78rem">Usage Type</label>
         <select class="form-control" id="em-usage-type" onchange="handleEditUsageTypeChange()">
+          <option value="NONE"    ${!rec.otUsageType ? 'selected' : ''}>${rec.otUsageType ? 'None — remove OT usage' : 'None — no OT usage'}</option>
           <option value="FL-OT"   ${rec.otUsageType==='FL-OT'  ?'selected':''}>Full Day Leave (FL-OT)</option>
           <option value="HD-OT"   ${rec.otUsageType==='HD-OT'  ?'selected':''}>Half Day (HD-OT)</option>
-          <option value="LATE-OT" ${rec.otUsageType==='LATE-OT'?'selected':''}>Undertime (UT-OT)</option>
+          <option value="LATE-OT" ${rec.otUsageType==='LATE-OT'?'selected':''}>Offset (OS-OT)</option>
         </select>
       </div>
       <div class="form-group hidden" id="em-usage-hours-group" style="margin-bottom:.4rem">
@@ -1102,13 +1146,20 @@ function renderEditMode(rec, titleEl, bodyEl, footerEl) {
       <div class="hidden" id="em-usage-insufficient-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin-top:.3rem">
         <span>⚠️</span><span id="em-usage-insufficient-warning-text"></span>
       </div>
-    </div>` : ''}`;
+    </div>`;
 
   footerEl.innerHTML = `
     <button class="btn btn-ghost" onclick="cancelEditMode()">Cancel</button>
     <button class="btn btn-primary" onclick="saveEditFromModal()">Save Changes</button>`;
 
   // Apply initial status-based disable state
+  // The Status dropdown only has present/absent/holiday — for a Full Day Leave (OT) record,
+  // which has no matching option, explicitly default it to Absent so what's shown matches
+  // what will actually be saved if the OT usage gets removed here.
+  if (rec.status === 'ot-leave') {
+    const statusEl = document.getElementById('em-status');
+    if (statusEl) statusEl.value = 'absent';
+  }
   setTimeout(() => { handleEditStatusChange(); handleEditUsageTypeChange(); }, 0);
 }
 
@@ -1122,14 +1173,17 @@ function handleEditUsageTypeChange() {
   const wh   = getWorkdayHours();
 
   let deductMins;
-  if (type === 'FL-OT') {
-    if (hg) hg.style.display = 'none';
+  if (type === 'NONE') {
+    if (hg) hg.classList.add('hidden');
+    deductMins = 0;
+  } else if (type === 'FL-OT') {
+    if (hg) hg.classList.add('hidden');
     deductMins = Math.round(wh * 60);
   } else if (type === 'HD-OT') {
-    if (hg) hg.style.display = 'none';
+    if (hg) hg.classList.add('hidden');
     deductMins = Math.round((wh / 2) * 60);
   } else {
-    if (hg) hg.style.display = 'block';
+    if (hg) hg.classList.remove('hidden');
     const h = parseFloat(document.getElementById('em-usage-hours')?.value) || 0;
     deductMins = Math.round(h * 60);
   }
@@ -1138,7 +1192,7 @@ function handleEditUsageTypeChange() {
   const remOTExcludingThis = getRemainingOTMinutesExcluding(rec ? rec.id : null);
   const warning = document.getElementById('em-usage-insufficient-warning');
   const warningText = document.getElementById('em-usage-insufficient-warning-text');
-  const insufficient = deductMins > 0 && deductMins > remOTExcludingThis;
+  const insufficient = type !== 'NONE' && deductMins > 0 && deductMins > remOTExcludingThis;
   if (warning) warning.classList.toggle('hidden', !insufficient);
   if (warningText && insufficient) {
     warningText.textContent = `You need ${minutesToHm(deductMins)} but only have ${minutesToHm(remOTExcludingThis)} of OT available.`;
@@ -1218,7 +1272,7 @@ function recalcEditModal() {
     const minMins = computeMinTimeOutForUsage(rec, s);
     if (minMins != null && (parsed.h * 60 + parsed.m) < minMins) {
       warnEl.classList.remove('hidden');
-      const label = rec.otUsageType === 'HD-OT' ? 'half day' : 'undertime';
+      const label = rec.otUsageType === 'HD-OT' ? 'half day' : 'offset';
       document.getElementById('em-undertime-warning-text').textContent =
         `You're checking out earlier than your declared ${label} accounts for. Minimum Time Out: ${minutesToClockLabel(minMins)}.`;
       if (earlyWarn) earlyWarn.classList.add('hidden');
@@ -1281,7 +1335,18 @@ async function saveEditFromModal() {
       showToast(`Insufficient OT for this usage type — you need ${minutesToHm(result.deductMins)}.`, 'error');
       return;
     }
-    if (result) {
+    if (result && result.type === 'NONE' && rec.otUsageType) {
+      // Remove just the usage tags — the record itself stays, with whatever status/fields
+      // are set in the form below (unlike the dedicated Undo button, this never deletes).
+      usageUpdate = {
+        otUsageType: firebase.firestore.FieldValue.delete(),
+        otUsageMins: firebase.firestore.FieldValue.delete(),
+        otUsageNote: firebase.firestore.FieldValue.delete(),
+        otUsageDate: firebase.firestore.FieldValue.delete(),
+        otSourceId:  firebase.firestore.FieldValue.delete(),
+      };
+    } else if (result && result.type !== 'NONE') {
+      // New or changed usage — declared here retroactively if the record didn't have one
       usageUpdate = { otUsageType: result.type, otUsageMins: result.deductMins };
     }
   }
@@ -1329,6 +1394,13 @@ async function saveEditFromModal() {
   if (isCustom) customWorkHours[date] = { workStart: wStart, workEnd: wEnd };
   else delete customWorkHours[date];
 
+  const proceed = await showConfirmDialog({
+    title: 'Save Changes?',
+    message: `Are you sure you want to save these changes to the record for <strong>${formatDateLong(date)}</strong>?`,
+    confirmLabel: 'Save Changes',
+  });
+  if (!proceed) return;
+
   const btn = document.querySelector('#record-modal-footer .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
@@ -1337,7 +1409,7 @@ async function saveEditFromModal() {
     showToast('Record modified ✓', 'success');
     const hasUsage = !!(usageUpdate ? usageUpdate.otUsageType : rec.otUsageType);
     if (dropStatus === 'present' && !hasUsage && isEarlyCheckoutWithoutOT(parsed, timeInputToHm(wEnd))) {
-      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any undertime.', 'default');
+      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any offset.', 'default');
     }
     await loadRecords();
     setModalMode('view');
@@ -1456,10 +1528,10 @@ async function confirmPresentTimeout(id) {
     // than THAT accounts for. Otherwise, flag checking out before Work End with no OT declared.
     const minMins = computeMinTimeOutForUsage(rec, s);
     if (minMins != null && (parsed.h * 60 + parsed.m) < minMins) {
-      const label = rec.otUsageType === 'HD-OT' ? 'half day' : 'undertime';
+      const label = rec.otUsageType === 'HD-OT' ? 'half day' : 'offset';
       showToast(`⚠ You checked out earlier than your declared ${label} accounts for (minimum: ${minutesToClockLabel(minMins)}).`, 'default');
     } else if ((!rec || !rec.otUsageType) && isEarlyCheckoutWithoutOT(parsed, e)) {
-      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any undertime.', 'default');
+      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any offset.', 'default');
     }
 
     await loadRecords();
@@ -1554,6 +1626,18 @@ async function saveRecord() {
   const dropStatus = document.getElementById('edit-status')?.value || 'present';
   if (!date) { showToast('Date is required.', 'error'); return; }
 
+  // Warn before silently overwriting an existing day's record
+  const existingSnap = await db.collection('users').doc(currentUser.uid).collection('attendance').doc(date).get();
+  if (existingSnap.exists) {
+    const proceed = await showConfirmDialog({
+      title: 'Record Already Exists',
+      message: `A record for <strong>${formatDateLong(date)}</strong> already exists. Do you want to overwrite it?`,
+      confirmLabel: 'Overwrite',
+      danger: true,
+    });
+    if (!proceed) return;
+  }
+
   let workMins = null, otMins = null, status = dropStatus;
 
   if (dropStatus === 'absent' || dropStatus === 'holiday') {
@@ -1606,7 +1690,7 @@ async function saveRecord() {
     await ref.set({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
     showToast('Record saved ✓', 'success');
     if (dropStatus === 'present' && isEarlyCheckoutWithoutOT(parsed, timeInputToHm(wEnd))) {
-      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any undertime.', 'default');
+      showToast('⚠ You timed out before your work hours end. Use OT hours if you have any offset.', 'default');
     }
     closeModal('add-modal');
     await loadRecords();

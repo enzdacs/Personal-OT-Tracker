@@ -152,7 +152,11 @@ function renderLeaveSuggestor() {
   const we = userSettings.workEnd   || '17:00';
   const [sh, sm] = ws.split(':').map(Number);
   const [eh, em] = we.split(':').map(Number);
-  const workHours = userSettings.otToLeaveHours || ((eh*60+em-sh*60-sm)/60) || 8;
+  // Match getWorkdayHours()'s math exactly (Work Start–End minus Breaktime Hours) so "Half Days"
+  // shown here are always the same length as what Half Day usage actually deducts elsewhere.
+  const breakMins  = Math.max(0, Math.round((userSettings.breakHours || 0) * 60));
+  const rawMins    = (eh * 60 + em) - (sh * 60 + sm);
+  const workHours  = (Math.max(0, rawMins - breakMins) / 60) || 8;
   const workMins  = workHours * 60;
   const halfMins  = workMins / 2;
 
@@ -164,7 +168,7 @@ function renderLeaveSuggestor() {
   const fullDays  = Math.floor(remOT / workMins);
   const afterDays = remOT - fullDays * workMins;
   const halfDays  = Math.floor(afterDays / halfMins);
-  const lateHours = Math.round((afterDays - halfDays * halfMins) / 60 * 10) / 10;
+  const offsetHours = Math.round((afterDays - halfDays * halfMins) / 60 * 10) / 10;
 
   el.innerHTML = `
     <div style="background:var(--bg);border-radius:7px;padding:.65rem;margin-bottom:.6rem">
@@ -181,11 +185,11 @@ function renderLeaveSuggestor() {
         <span style="font-size:.75rem;color:var(--primary);font-weight:600">Half Days</span>
         <span style="font-size:1.1rem;font-weight:700;color:var(--primary)">${halfDays}d</span>
       </div>` : ''}
-      ${lateHours > 0 ? `<div style="background:var(--accent-light);border-radius:6px;padding:.5rem .7rem;border:1px solid #FDE68A;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:.75rem;color:var(--accent);font-weight:600">Late Hours</span>
-        <span style="font-size:1.1rem;font-weight:700;color:var(--accent)">${lateHours}h</span>
+      ${offsetHours > 0 ? `<div style="background:var(--accent-light);border-radius:6px;padding:.5rem .7rem;border:1px solid #FDE68A;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.75rem;color:var(--accent);font-weight:600">Offset Hours</span>
+        <span style="font-size:1.1rem;font-weight:700;color:var(--accent)">${offsetHours}h</span>
       </div>` : ''}
-      ${fullDays===0&&halfDays===0&&lateHours===0 ? `<div style="font-size:.78rem;color:var(--text-light);text-align:center;padding:.5rem">Less than 1 leave worth of OT.</div>` : ''}
+      ${fullDays===0&&halfDays===0&&offsetHours===0 ? `<div style="font-size:.78rem;color:var(--text-light);text-align:center;padding:.5rem">Less than 1 leave worth of OT.</div>` : ''}
     </div>`;
 }
 
