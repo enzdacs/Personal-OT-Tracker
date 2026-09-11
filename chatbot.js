@@ -98,6 +98,7 @@ const CHATBOT_TOOLS = [{
 const CHATBOT_WRITE_TOOLS = new Set(['add_record', 'edit_record', 'delete_record']);
 
 let _chatHistory = [];
+let _greetingShown = false;
 let _chatOpen = false;
 let _chatBusy = false;
 
@@ -154,7 +155,8 @@ function wireChatbotEvents() {
   bubble.addEventListener('click', () => {
     _chatOpen = !_chatOpen;
     panel.classList.toggle('hidden', !_chatOpen);
-    if (_chatOpen && _chatHistory.length === 0) {
+    if (_chatOpen && !_greetingShown) {
+      _greetingShown = true;
       appendBotMessage("Hi! I'm your OT Tracker assistant. Ask me about your overtime, attendance, or leave — I can also log, edit, or remove records for you. I'll always show you a confirmation before changing anything.");
       document.getElementById('chatbot-input')?.focus();
     }
