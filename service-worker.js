@@ -1,9 +1,9 @@
-const CACHE_NAME = 'otracker-v1.4';
+const CACHE_NAME = 'otracker-v1.5';
 const STATIC_FILES = [
   '/index.html', '/dashboard.html', '/attendance.html',
-  '/overtime.html', '/schedule.html', '/settings.html',
+  '/overtime.html', '/schedule.html', '/settings.html', '/badges.html',
   '/style.css', '/utils.js', '/dashboard.js', '/attendance.js',
-  '/overtime.js', '/schedule.js', '/settings.js', '/auth.js',
+  '/overtime.js', '/schedule.js', '/settings.js', '/auth.js', '/badges.js',
   '/notifications.js', '/firebase-config.js', '/chatbot.js', '/OTracker-logo.png'
 ];
 
@@ -45,6 +45,19 @@ self.addEventListener('push', e => {
       body:  data.body || '',
       icon:  '/OTracker-logo.png',
       badge: '/OTracker-logo.png',
+    })
+  );
+});
+
+// Tapping a notification should focus an existing tab if one's open, else open a new one
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('/dashboard.html');
     })
   );
 });

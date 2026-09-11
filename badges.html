@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OT Tracker — Badges</title>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="OT Tracker"/>
+  <link rel="apple-touch-icon" href="OTracker-logo.png"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div id="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img class="logo-icon" src="OTracker-logo.png" alt="OTracker logo"/>
+      <div><div class="logo-text">OT Tracker</div><div class="logo-sub">Attendance Monitor</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a class="nav-item" href="dashboard.html"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Dashboard</a>
+      <a class="nav-item" href="attendance.html"><span class="nav-icon"><i data-lucide="calendar-check"></i></span> Attendance</a>
+      <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
+      <a class="nav-item" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
+      <a class="nav-item active" href="badges.html"><span class="nav-icon"><i data-lucide="award"></i></span> Badges</a>
+      <div class="nav-section-label">Account</div>
+      <a class="nav-item" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
+      <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card-sidebar">
+        <div class="user-avatar" id="sidebar-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-username">Loading…</div>
+          <div class="user-dept" id="sidebar-dept">—</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop"></div>
+  <main class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <button id="sidebar-toggle" aria-label="Menu"><i data-lucide="menu" class="icon"></i></button>
+        <span class="page-title">Badges</span>
+      </div>
+      <div class="topbar-right">
+        <div class="notif-bell-wrap">
+          <button class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
+            <i data-lucide="bell" class="icon"></i><span class="notif-dot hidden" id="notif-dot"></span>
+          </button>
+          <!-- Notification Dropdown (Facebook-style) -->
+          <div class="notif-dropdown hidden" id="notif-dropdown">
+            <div class="notif-dropdown-header">
+              <span class="notif-dropdown-title">Notifications</span>
+              <button class="notif-clear-all btn btn-ghost btn-sm" onclick="clearAllNotifications()">Clear all</button>
+            </div>
+            <div class="notif-dropdown-list"></div>
+          </div>
+        </div>
+        <div class="live-clock-wrap">
+          <div class="live-clock-time" id="clock-time">—</div>
+          <div class="live-clock-date" id="clock-date">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div class="card">
+        <div class="card-body">
+          <div class="settings-section-title"><i data-lucide="award" class="icon"></i> Badges</div>
+          <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
+            Earned automatically from your attendance record. Come back after logging more days.
+          </p>
+
+          <div class="streak-banner">
+            <div class="streak-banner-item">
+              <div class="streak-banner-icon streak-flame"><i data-lucide="flame"></i></div>
+              <div>
+                <div class="streak-banner-value" id="streak-current">—</div>
+                <div class="streak-banner-label">Current Streak</div>
+              </div>
+            </div>
+            <div class="streak-banner-item">
+              <div class="streak-banner-icon streak-trophy"><i data-lucide="trophy"></i></div>
+              <div>
+                <div class="streak-banner-value" id="streak-longest">—</div>
+                <div class="streak-banner-label">Longest Streak</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="badge-grid" id="badge-grid"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="utils.js"></script>
+<script src="notifications.js"></script>
+<script src="badges.js"></script>
+<script src="chatbot.js"></script>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
+</script>
+<script>if (window.lucide) lucide.createIcons();</script>
+</body>
+</html>

@@ -18,16 +18,38 @@ function initNotifications(user, settings) {
   // Bell click wired via DOMContentLoaded below
 }
 
+// ── Notification platform support detection ───
+// Mobile Chrome (Android) disallows the bare `new Notification()` constructor entirely —
+// it only works through a service worker's showNotification(), which is also the correct,
+// recommended path for installed PWAs generally. iOS only supports notifications at all
+// once the app has been added to the Home Screen (iOS 16.4+); Safari-in-a-tab never does.
+function getNotificationSupportInfo() {
+  const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                        window.navigator.standalone === true;
+  const hasNotificationAPI = 'Notification' in window;
+  const hasServiceWorker   = 'serviceWorker' in navigator;
+
+  if (isIOS && !isStandalone) {
+    return { supported: false, reason: 'ios-not-installed' };
+  }
+  if (!hasNotificationAPI || !hasServiceWorker) {
+    return { supported: false, reason: 'unsupported-browser' };
+  }
+  return { supported: true };
+}
+
 // ── Push permission ───────────────────────────
 async function requestPushPermission() {
-  if (!('Notification' in window)) return;
+  if (!getNotificationSupportInfo().supported) return;
   if (Notification.permission === 'default') {
     await Notification.requestPermission();
   }
 }
 
 // ── Send a notification ───────────────────────
-function sendNotification(title, body) {
+async function sendNotification(title, body) {
   const now = getManilaDate();
   const notif = {
     id:      Date.now(),
@@ -42,10 +64,12 @@ function sendNotification(title, body) {
   saveNotifHistory();
   updateBell();
 
-  // OS-level notification
-  if ('Notification' in window && Notification.permission === 'granted') {
+  // OS-level notification — always routed through the service worker (registration.showNotification),
+  // never the bare `new Notification()` constructor, since that silently fails on mobile Chrome.
+  if (getNotificationSupportInfo().supported && Notification.permission === 'granted') {
     try {
-      new Notification(title, {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
         body,
         icon:  'OTracker-logo.png',
         badge: 'OTracker-logo.png',
@@ -371,4 +395,57 @@ async function _fireOTReminder() {
         `You have ${minutesToHm(remOT)} OT to use as: ${parts.join(', ')}.`);
     }
   } catch(e) {}
+}
+
+// ── Test Notification (Settings → Notifications) ──────────────────────────
+// Walks through permission + platform checks explicitly, showing a clear message at each
+// step, rather than silently failing like the scheduled reminders do on unsupported setups.
+async function sendTestNotification() {
+  const info = getNotificationSupportInfo();
+
+  if (!info.supported) {
+    if (info.reason === 'ios-not-installed') {
+      showNotifTestStatus(
+        'On iPhone/iPad, notifications only work after adding this app to your Home Screen. Tap the Share button, then "Add to Home Screen", open the app from there, and try again.',
+        'error'
+      );
+    } else {
+      showNotifTestStatus('Notifications aren\'t supported in this browser.', 'error');
+    }
+    return;
+  }
+
+  if (Notification.permission === 'denied') {
+    showNotifTestStatus('Notifications are blocked for this site. Enable them in your browser or device notification settings, then try again.', 'error');
+    return;
+  }
+
+  if (Notification.permission === 'default') {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      showNotifTestStatus('Permission wasn\'t granted, so a test notification couldn\'t be sent.', 'error');
+      return;
+    }
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification('OT Tracker Test', {
+      body: "Notifications are working! You'll get alerts like this for shift reminders and OT updates.",
+      icon: 'OTracker-logo.png',
+      badge: 'OTracker-logo.png',
+      tag: 'ot-tracker-test',
+    });
+    showNotifTestStatus('Test notification sent — check your notification tray.', 'success');
+  } catch (e) {
+    showNotifTestStatus('Could not send a test notification: ' + e.message, 'error');
+  }
+}
+
+function showNotifTestStatus(msg, type) {
+  const el = document.getElementById('notif-test-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'notif-test-status ' + (type === 'error' ? 'notif-test-error' : 'notif-test-success');
+  el.classList.remove('hidden');
 }

@@ -29,6 +29,7 @@
       <a class="nav-item" href="attendance.html"><span class="nav-icon"><i data-lucide="calendar-check"></i></span> Attendance</a>
       <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
       <a class="nav-item" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
+      <a class="nav-item" href="badges.html"><span class="nav-icon"><i data-lucide="award"></i></span> Badges</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item active" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
@@ -130,6 +131,15 @@
               <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
                 Choose how and when you get reminded.
               </p>
+
+              <div class="form-group" style="background:var(--bg);border-radius:8px;padding:.85rem;border:1px solid var(--border)">
+                <label class="form-label" style="margin-bottom:.35rem">Test Notifications</label>
+                <div class="form-hint" style="margin:0 0 .6rem">Not sure notifications are working on your device? Send yourself a test.</div>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-test-notification" onclick="sendTestNotification()">
+                  <i data-lucide="bell-ring" class="icon"></i> Send Test Notification
+                </button>
+                <div class="notif-test-status hidden" id="notif-test-status"></div>
+              </div>
 
               <div class="form-group">
                 <label class="form-label">Notify me before shift starts</label>

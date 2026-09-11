@@ -28,17 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
     overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
   });
 
-  // Work Schedule / Badges sub-nav tabs
-  document.querySelectorAll('.settings-nav-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.panel).classList.add('active');
-      if (btn.dataset.panel === 'panel-badges') loadAndRenderBadges();
-    });
-  });
-
   document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
   document.getElementById('btn-logout').addEventListener('click', confirmAndSignOut);
 
@@ -283,44 +272,4 @@ async function saveSchedule() {
     btn.textContent = 'Save Schedule';
     if (!_scheduleDirty) btn.disabled = true;
   }
-}
-
-// ── Badges & Streaks (lazy-loaded on first tab open) ──
-let _badgesLoaded = false;
-
-async function loadAndRenderBadges() {
-  if (_badgesLoaded) return;
-  _badgesLoaded = true;
-  try {
-    const snap = await db.collection('users').doc(currentUser.uid)
-                         .collection('attendance').get();
-    const records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderBadgesUI(computeBadges(records, userSettings));
-  } catch(e) {
-    showToast('Could not load badges: ' + e.message, 'error');
-    _badgesLoaded = false;
-  }
-}
-
-function renderBadgesUI(result) {
-  document.getElementById('streak-current').textContent = `${result.current} day${result.current === 1 ? '' : 's'}`;
-  document.getElementById('streak-longest').textContent = `${result.longest} day${result.longest === 1 ? '' : 's'}`;
-
-  const grid = document.getElementById('badge-grid');
-  if (!grid) return;
-  grid.innerHTML = BADGE_DEFS.map(b => {
-    const isEarned = !!result.earned[b.id];
-    const count    = result.counts[b.id] || 0;
-    const countLabel = (b.id === 'streak-7' || b.id === 'streak-30')
-      ? `Best streak: ${count} day${count === 1 ? '' : 's'}`
-      : `Earned ${count} time${count === 1 ? '' : 's'}`;
-    return `
-      <div class="badge-card ${isEarned ? 'earned' : 'locked'}" style="--badge-color:${b.color};--badge-bg:${b.color}22">
-        <div class="badge-icon-ring"><i data-lucide="${b.icon}"></i></div>
-        <div class="badge-name">${b.name}</div>
-        <div class="badge-desc">${b.desc}</div>
-        ${isEarned ? `<div class="badge-count">${countLabel}</div>` : `<div class="badge-count" style="color:var(--text-light)">Not yet earned</div>`}
-      </div>`;
-  }).join('');
-  if (window.lucide) lucide.createIcons();
 }

@@ -24,6 +24,7 @@
       <a class="nav-item" href="attendance.html"><span class="nav-icon"><i data-lucide="calendar-check"></i></span> Attendance</a>
       <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
       <a class="nav-item active" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
+      <a class="nav-item" href="badges.html"><span class="nav-icon"><i data-lucide="award"></i></span> Badges</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
@@ -67,13 +68,7 @@
     </div>
 
     <div class="page-content">
-      <div class="settings-layout">
-        <div class="settings-nav">
-          <button class="settings-nav-item active" data-panel="panel-work-schedule"><i data-lucide="calendar-days" class="icon"></i> Work Schedule</button>
-          <button class="settings-nav-item" data-panel="panel-badges"><i data-lucide="award" class="icon"></i> Badges</button>
-        </div>
-        <div style="min-width:0">
-      <div class="card settings-panel active" id="panel-work-schedule" style="overflow:hidden">
+      <div class="card" style="overflow:hidden">
         <div class="card-body">
           <div class="settings-section-title"><i data-lucide="calendar-days" class="icon"></i> Work Schedule</div>
           <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
@@ -175,38 +170,6 @@
           </div>
 
           <button class="btn btn-primary" id="btn-save-schedule" disabled>Save Schedule</button>
-        </div>
-      </div>
-
-      <!-- Badges Panel -->
-      <div class="card settings-panel" id="panel-badges">
-        <div class="card-body">
-          <div class="settings-section-title"><i data-lucide="award" class="icon"></i> Badges</div>
-          <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
-            Earned automatically from your attendance record. Come back after logging more days.
-          </p>
-
-          <div class="streak-banner">
-            <div class="streak-banner-item">
-              <div class="streak-banner-icon streak-flame"><i data-lucide="flame"></i></div>
-              <div>
-                <div class="streak-banner-value" id="streak-current">—</div>
-                <div class="streak-banner-label">Current Streak</div>
-              </div>
-            </div>
-            <div class="streak-banner-item">
-              <div class="streak-banner-icon streak-trophy"><i data-lucide="trophy"></i></div>
-              <div>
-                <div class="streak-banner-value" id="streak-longest">—</div>
-                <div class="streak-banner-label">Longest Streak</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="badge-grid" id="badge-grid"></div>
-        </div>
-      </div>
-
         </div>
       </div>
     </div>
