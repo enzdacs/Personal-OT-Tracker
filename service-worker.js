@@ -1,7 +1,7 @@
-const CACHE_NAME = 'otracker-v1.5';
+const CACHE_NAME = 'otracker-v1.6';
 const STATIC_FILES = [
   '/index.html', '/dashboard.html', '/attendance.html',
-  '/overtime.html', '/schedule.html', '/settings.html', '/badges.html',
+  '/overtime.html', '/schedule.html', '/settings.html', '/badges.html', '/companies.html', '/companies.js',
   '/style.css', '/utils.js', '/dashboard.js', '/attendance.js',
   '/overtime.js', '/schedule.js', '/settings.js', '/auth.js', '/badges.js',
   '/notifications.js', '/firebase-config.js', '/chatbot.js', '/OTracker-logo.png'

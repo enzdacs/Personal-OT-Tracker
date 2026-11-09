@@ -10,7 +10,10 @@
 // user's records happen entirely in the browser, authenticated as that user, exactly like
 // the rest of the app. This function is a relay, not a privileged backend.
 
-const GEMINI_MODEL = 'gemini-3.7-flash';
+// Flash-Lite trades a bit of reasoning depth for a much higher free-tier rate limit
+// (roughly 15-30 RPM vs. 5 RPM for full Flash) — a better fit for a chat feature
+// that can make 2 API calls per turn whenever a tool runs.
+const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 exports.handler = async (event) => {

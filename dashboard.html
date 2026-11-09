@@ -29,6 +29,7 @@
       <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
       <a class="nav-item" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
       <a class="nav-item" href="badges.html"><span class="nav-icon"><i data-lucide="award"></i></span> Badges</a>
+      <a class="nav-item" href="companies.html"><span class="nav-icon"><i data-lucide="building-2"></i></span> Companies</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
@@ -154,6 +155,9 @@
           </div>
         </div>
 
+        <!-- Remaining leaves (filled by dashboard.js) -->
+        <div id="leave-balance-strip" style="padding:.55rem 1.2rem;border-bottom:1px solid var(--border);display:flex;gap:.5rem 1rem;flex-wrap:wrap;align-items:center;font-size:.76rem;color:var(--text-light)"></div>
+
         <!-- Active Filter Banner -->
         <div id="filter-banner" class="hidden" style="padding:.5rem 1.2rem;background:var(--primary-light);border-bottom:1px solid #BFDBFE;display:flex;align-items:center;justify-content:space-between;font-size:.78rem;color:var(--primary)">
           <span id="filter-banner-text">Filters active</span>
@@ -168,7 +172,7 @@
                 <th>Time In</th>
                 <th>Time Out (OT)</th>
                 <th>Work Hours</th>
-                <th>OT Use</th>
+                <th>Leave / Offset</th>
               </tr>
             </thead>
             <tbody id="records-tbody">
@@ -185,10 +189,9 @@
         <div style="padding:.65rem 1.2rem;border-top:1px solid var(--border);display:flex;gap:1rem;flex-wrap:wrap">
           <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:var(--primary-light);border-radius:3px;display:inline-block;border:1px solid #BFDBFE"></span> Today</span>
           <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:var(--accent-light);border-radius:3px;display:inline-block;border:1px solid #FDE68A"></span> Has OT</span>
-          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:var(--success-light);border-radius:3px;display:inline-block;border:1px solid #A7F3D0"></span> OT Used</span>
           <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:#FFF5F5;border-radius:3px;display:inline-block;border:1px solid #FECACA"></span> Absent</span>
           <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:#EDE9FE;border-radius:3px;display:inline-block;border:1px solid #C4B5FD"></span> Holiday</span>
-          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:#ECFDF5;border-radius:3px;display:inline-block;border:1px solid #A7F3D0"></span> OT Leave</span>
+          <span style="font-size:.72rem;color:var(--text-light);display:flex;align-items:center;gap:.35rem"><span style="width:12px;height:12px;background:#DBEAFE;border-radius:3px;display:inline-block;border:1px solid #93C5FD"></span> Leave / Offset Used</span>
         </div>
       </div>
 
@@ -200,40 +203,42 @@
 <div class="modal-overlay hidden" id="use-modal">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <span class="modal-title">Use OT Hours</span>
+      <span class="modal-title">Use Leave/Offset</span>
       <button class="modal-close" data-close-modal="use-modal">✕</button>
     </div>
     <div class="modal-body">
       <p style="font-size:.84rem;color:var(--text-light);margin-bottom:1rem">
-        Record how you want to use your overtime. Available OT: <strong id="use-modal-avail">—</strong>
+        File a leave or offset using your banked OT. Available OT: <strong id="use-modal-avail">—</strong>
       </p>
       <div class="form-group">
         <label class="form-label">Date to Apply This To</label>
-        <input class="form-control" type="date" id="use-leave-date"/>
-        <div class="form-hint">This is the exact date that will show the OT usage in your records — double-check it before confirming.</div>
+        <input class="form-control" type="date" id="use-leave-date" onchange="validateUseForm()"/>
+        <div class="form-hint">This is the exact date that will show in your records — double-check it before confirming.</div>
       </div>
       <div class="form-group">
         <label class="form-label">Usage Type</label>
         <select class="form-control" id="use-type" onchange="handleUseTypeChange()">
-          <option value="leave">Full Day Leave (FL-OT)</option>
-          <option value="halfday">Half Day (HD-OT)</option>
-          <option value="late">Offset (OS-OT)</option>
+          <option value="SL">Sick Leave (SL)</option>
+          <option value="VL">Vacation Leave (VL)</option>
+          <option value="BL">Birthday Leave (BL)</option>
+          <option value="OS">Offset (OS)</option>
         </select>
+        <div class="form-hint" id="use-leave-info"></div>
+      </div>
+      <div class="form-group hidden" id="use-offset-group">
+        <button type="button" class="btn btn-ghost" onclick="openOffsetPicker('use')">Select Offset Dates</button>
+        <div class="form-hint" id="use-offset-summary">No dates selected.</div>
       </div>
       <div class="form-group" id="use-timein-group">
         <label class="form-label">Time In</label>
         <input class="form-control" type="time" id="use-timein"/>
         <div class="form-hint">Estimated time you'll clock in that day — defaults to your Work Start.</div>
       </div>
-      <div class="form-group" id="use-hours-group">
-        <label class="form-label">Hours to Deduct</label>
-        <input class="form-control" type="number" id="use-hours" min="0.25" step="0.25" placeholder="e.g. 1.5"/>
-        <div class="form-hint" id="use-hours-hint">Enter how many OT hours to deduct (e.g. 1.5 = 1h 30m).</div>
-      </div>
+      <input type="hidden" id="use-hours"/>
       <div class="hidden" id="use-min-timeout-hint" style="font-size:.78rem;color:var(--primary);background:var(--primary-light);border-radius:8px;padding:.5rem .7rem;margin-bottom:.75rem"></div>
       <div class="form-group">
         <label class="form-label">Note (optional)</label>
-        <input class="form-control" type="text" id="use-note" placeholder="e.g. Sick leave, appointment…"/>
+        <input class="form-control" type="text" id="use-note" placeholder="e.g. Appointment, family event…"/>
       </div>
       <div class="hidden" id="use-insufficient-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:8px;padding:.6rem .75rem;font-size:.8rem;margin-top:.25rem">
         <span>⚠️</span>
@@ -374,7 +379,7 @@
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">OT Use</label>
+        <label class="form-label">OT Status</label>
         <select class="form-control" id="f-ot-use">
           <option value="">Any</option>
           <option value="used">OT Used</option>
@@ -464,8 +469,15 @@
       <button class="choice-card" onclick="closeModal('add-choice-modal'); openUseModal();">
         <span class="choice-card-icon"><i data-lucide="repeat" class="icon"></i></span>
         <span>
-          <span class="choice-card-title">Use Offset Hours</span>
-          <span class="choice-card-sub">Use your banked OT as leave, half day, or offset</span>
+          <span class="choice-card-title">Use Leave/Offset</span>
+          <span class="choice-card-sub">File a leave, or offset using your banked OT hours</span>
+        </span>
+      </button>
+      <button class="choice-card" onclick="closeModal('add-choice-modal'); openTenureModal();">
+        <span class="choice-card-icon"><i data-lucide="briefcase" class="icon"></i></span>
+        <span>
+          <span class="choice-card-title">Tenure Ended</span>
+          <span class="choice-card-sub">Close out this job and archive its records</span>
         </span>
       </button>
     </div>
@@ -543,6 +555,123 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close-modal="add-modal">Cancel</button>
       <button class="btn btn-primary" id="btn-save-record">Save Record</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Select Offset Dates Modal ══ -->
+<div class="modal-overlay hidden" id="offset-dates-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">Select Offset Dates</span>
+      <button class="modal-close" data-close-modal="offset-dates-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.84rem;color:var(--text-light);margin-bottom:.75rem">
+        Pick the dates whose OT hours you want to use. Format: mm/dd/yyyy (hh:mm)
+      </p>
+      <div id="offset-dates-list" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
+      <div style="margin-top:.75rem;padding:.55rem .75rem;background:var(--primary-light);border-radius:8px;font-size:.84rem;color:var(--primary)">
+        Total selected: <strong id="offset-dates-total">00:00</strong>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="offset-dates-modal">Cancel</button>
+      <button class="btn btn-primary" onclick="applyOffsetSelection()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Tenure Ended Modal ══ -->
+<div class="modal-overlay hidden" id="tenure-modal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">Tenure Ended</span>
+      <button class="modal-close" data-close-modal="tenure-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:.78rem;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:.6rem .75rem;margin-bottom:1rem">
+        Saving archives all your current attendance records, so Dashboard, Attendance, Overtime and Badges start fresh. The job is saved under <strong>Companies</strong>, where you can undo this anytime.
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Company *</label>
+          <input class="form-control" type="text" id="t-company" maxlength="80"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Job Title</label>
+          <input class="form-control" type="text" id="t-title" maxlength="80"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Employment Type</label>
+          <select class="form-control" id="t-type">
+            <option>Full-time</option><option>Part-time</option><option>Contract</option>
+            <option>Internship / OJT</option><option>Freelance</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Work Setup</label>
+          <select class="form-control" id="t-setup">
+            <option>On-site</option><option>Hybrid</option><option>Remote</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Location</label>
+        <input class="form-control" type="text" id="t-location" maxlength="80" placeholder="e.g. Makati, Philippines"/>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input class="form-control" type="date" id="t-start"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date *</label>
+          <input class="form-control" type="date" id="t-end"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reason for ending tenure *</label>
+        <select class="form-control" id="t-reason" onchange="document.getElementById('t-reason-other').classList.toggle('hidden', this.value !== 'Other')">
+          <option value="">Select a reason…</option>
+          <option>Contract Completion</option>
+          <option>End of Internship / OJT</option>
+          <option>Resigned</option>
+          <option>Job Terminated</option>
+          <option>Laid Off</option>
+          <option>Company Closure</option>
+          <option>Other</option>
+        </select>
+        <input class="form-control hidden" type="text" id="t-reason-other" maxlength="80" placeholder="Please specify" style="margin-top:.5rem"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Job Description</label>
+        <textarea class="form-control" id="t-description" rows="3" maxlength="1000" style="resize:vertical" placeholder="What did you do in this role?"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Skills Used / Learned</label>
+        <input class="form-control" type="text" id="t-skills" maxlength="200" placeholder="Comma-separated, e.g. Python, SIEM, Teamwork"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Key Achievements</label>
+        <textarea class="form-control" id="t-achievements" rows="2" maxlength="600" style="resize:vertical"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Job Rating</label>
+        <div id="t-rating" style="display:flex;gap:.15rem">
+          <button type="button" data-v="1" onclick="setTenureRating(1)" style="background:none;border:none;cursor:pointer;font-size:1.6rem;line-height:1;padding:0 .1rem">★</button>
+          <button type="button" data-v="2" onclick="setTenureRating(2)" style="background:none;border:none;cursor:pointer;font-size:1.6rem;line-height:1;padding:0 .1rem">★</button>
+          <button type="button" data-v="3" onclick="setTenureRating(3)" style="background:none;border:none;cursor:pointer;font-size:1.6rem;line-height:1;padding:0 .1rem">★</button>
+          <button type="button" data-v="4" onclick="setTenureRating(4)" style="background:none;border:none;cursor:pointer;font-size:1.6rem;line-height:1;padding:0 .1rem">★</button>
+          <button type="button" data-v="5" onclick="setTenureRating(5)" style="background:none;border:none;cursor:pointer;font-size:1.6rem;line-height:1;padding:0 .1rem">★</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="tenure-modal">Cancel</button>
+      <button class="btn btn-danger" id="btn-save-tenure" onclick="saveTenure()">Save &amp; End Tenure</button>
     </div>
   </div>
 </div>

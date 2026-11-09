@@ -3,6 +3,11 @@
 // =============================================
 
 // ── Manila (PH) Time ──────────────────────────
+// Escapes user-typed text before it is placed inside innerHTML
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
 function getManilaDate() {
   const now    = new Date();
   const offset = 8 * 60;
@@ -180,6 +185,8 @@ async function getUserSettings(uid) {
         perDaySchedule: data.perDaySchedule || {},
         otToLeaveHours: data.otToLeaveHours || null,
         otCountingRule: data.otCountingRule || { startRule: 'immediate', delayMins: 0, incrementMins: 1 },
+        leaves:         data.leaves         || { sl: 0, vl: 0, bl: 1 },
+        birthDate:      data.birthDate      || '',
         notifSettings:  data.notifSettings  || { shiftWarnMins: 5, otRemindFreq: 'daily', timeoutRemindFreq: '60' },
       };
     } else {
@@ -208,6 +215,7 @@ async function getUserSettings(uid) {
 function applyOTCountingRule(rawOTMins, rule) {
   rule = rule || { startRule: 'immediate', delayMins: 0, incrementMins: 1 };
   if (rawOTMins <= 0) return 0;
+  if (rule.startRule === 'none') return 0; // job/internship that doesn't allow OT
   if (rule.startRule === 'immediate') return rawOTMins;
   const delay = rule.delayMins || 0;
   const incr  = rule.incrementMins || 1;
@@ -223,7 +231,7 @@ function applyOTCountingRule(rawOTMins, rule) {
 // rather than tracked via a separate flag.
 function getOTPool(records) {
   const earned = records.reduce((s, r) => s + (r.otMinutes || 0), 0);
-  const used   = records.reduce((s, r) => s + (r.otUsageType ? (r.otUsageMins || 0) : 0), 0);
+  const used   = records.reduce((s, r) => s + (isOTFundedUsage(r.otUsageType) ? (r.otUsageMins || 0) : 0), 0);
   return { earned, used, remaining: earned - used };
 }
 
@@ -232,14 +240,42 @@ function getOTPool(records) {
 function otUsageShortLabel(code) {
   if (code === 'FL-OT')   return 'FL-OT';
   if (code === 'HD-OT')   return 'HD-OT';
-  if (code === 'LATE-OT') return 'OS-OT';
-  return code || 'N/A';
+  if (code === 'LATE-OT') return 'OS';
+  return code || 'N/A';   // SL / VL / BL show as-is
 }
 function otUsageFullLabel(code) {
+  if (code === 'SL')      return 'Sick Leave (SL)';
+  if (code === 'VL')      return 'Vacation Leave (VL)';
+  if (code === 'BL')      return 'Birthday Leave (BL)';
   if (code === 'FL-OT')   return 'Full Day Leave (FL-OT)';
   if (code === 'HD-OT')   return 'Half Day (HD-OT)';
-  if (code === 'LATE-OT') return 'Offset (OS-OT)';
+  if (code === 'LATE-OT') return 'Offset (OS)';
   return code || 'N/A';
+}
+
+// ── Leaves (SL / VL / BL) ────────────────────
+// Leaves are a separate yearly allowance set in Schedule → Leaves. They never touch the OT pool.
+// Offset (stored code LATE-OT) and the older FL-OT / HD-OT are the usages that DO draw from OT.
+const LEAVE_CODES = ['SL', 'VL', 'BL'];
+function isLeaveUsage(code)    { return LEAVE_CODES.includes(code); }
+function isOTFundedUsage(code) { return code === 'FL-OT' || code === 'HD-OT' || code === 'LATE-OT'; }
+
+// Yearly allotment per leave type. Birthday Leave is always 1 per year.
+function getLeaveAllotments(settings) {
+  const l = (settings && settings.leaves) || {};
+  return { SL: Math.max(0, parseInt(l.sl) || 0), VL: Math.max(0, parseInt(l.vl) || 0), BL: 1 };
+}
+
+// Per-type { total, used, remaining } for one calendar year (default: current year), counted from records.
+function getLeaveBalance(records, settings, year) {
+  year = String(year || getDateKey().slice(0, 4));
+  const total = getLeaveAllotments(settings);
+  const out = {};
+  LEAVE_CODES.forEach(code => {
+    const used = records.filter(r => r.otUsageType === code && (r.date || '').slice(0, 4) === year).length;
+    out[code] = { total: total[code], used, remaining: Math.max(0, total[code] - used) };
+  });
+  return out;
 }
 
 // Recomputes "present" records' Work Hours / Overtime using the CURRENT schedule (Work Start/End,

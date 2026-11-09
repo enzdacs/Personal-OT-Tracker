@@ -255,6 +255,6 @@ function renderOTTable(recs) {
       <td>${formatDateShort(r.date)}</td>
       <td><span class="badge badge-warning">${minutesToHm(r.otMinutes)}</span></td>
       <td>${r.timeOutDisplay || '—'}</td>
-      <td>${r.otUsageType ? `<span class="badge badge-ot-leave">${otUsageShortLabel(r.otUsageType)}</span>` : '<span class="badge badge-gray">In Pool</span>'}</td>
+      <td>${r.otUsedOn ? `<span class="badge" style="background:var(--success);color:#fff;font-weight:700">USED</span> <span style="font-size:.7rem;color:var(--text-light)">${formatDateShort(r.otUsedOn)}</span>` : r.otUsageType ? `<span class="badge badge-ot-leave">${otUsageShortLabel(r.otUsageType)}</span>` : '<span class="badge badge-gray">In Pool</span>'}</td>
     </tr>`).join('');
 }

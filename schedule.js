@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
       updateOTRulePreview();
       markScheduleDirty();
     }
+    if (['s-leave-sl','s-leave-vl','s-birth-date'].includes(e.target.id)) markScheduleDirty();
   });
   document.addEventListener('change', e => {
     const watchedIds = ['s-work-start','s-work-end','s-break-hours','s-ot-start-rule','s-ot-delay-mins','s-ot-increment-mins'];
@@ -93,6 +94,12 @@ function populateScheduleForm() {
   if (incrEl) incrEl.value = otRule.incrementMins ?? 30;
   handleOTRuleChange();
 
+  // Leaves
+  const leaves = getLeaveAllotments(s);
+  document.getElementById('s-leave-sl').value   = leaves.SL;
+  document.getElementById('s-leave-vl').value   = leaves.VL;
+  document.getElementById('s-birth-date').value = s.birthDate || '';
+
   updateWorkHoursPreview();
   updateOTLeaveComputed();
 
@@ -106,6 +113,7 @@ function handleOTRuleChange() {
   const rule    = document.getElementById('s-ot-start-rule')?.value;
   const block   = document.getElementById('ot-delay-block');
   if (block) block.classList.toggle('hidden', rule !== 'after-delay');
+  document.getElementById('ot-none-hint')?.classList.toggle('hidden', rule !== 'none');
   updateOTRulePreview();
 }
 
@@ -253,6 +261,14 @@ async function saveSchedule() {
     incrementMins: startRule === 'after-delay' ? incrementMins : 1,
   };
 
+  // Leaves — Birthday Leave is always 1 per year
+  const leaves = {
+    sl: Math.max(0, parseInt(document.getElementById('s-leave-sl')?.value) || 0),
+    vl: Math.max(0, parseInt(document.getElementById('s-leave-vl')?.value) || 0),
+    bl: 1,
+  };
+  const birthDate = document.getElementById('s-birth-date')?.value || '';
+
   const btn = document.getElementById('btn-save-schedule');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
@@ -260,7 +276,7 @@ async function saveSchedule() {
             .collection('config').doc('settings')
             .set({ workStart: start, workEnd: end, workDays: days, breakHours,
                    multiSchedule: isMulti, perDaySchedule,
-                   otToLeaveHours, otCountingRule, isNewUser: false }, { merge: true });
+                   otToLeaveHours, otCountingRule, leaves, birthDate, isNewUser: false }, { merge: true });
     clearSettingsCache();
     userSettings = await getUserSettings(currentUser.uid);
     _scheduleDirty = false;

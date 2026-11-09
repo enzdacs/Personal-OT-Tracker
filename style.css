@@ -115,7 +115,7 @@ body {
 .badge-primary  { background: var(--primary-light); color: var(--primary); }
 .badge-gray     { background: #F1F5F9; color: var(--text-light); }
 .badge-holiday  { background: #EDE9FE; color: #7C3AED; }
-.badge-ot-leave { background: #ECFDF5; color: #065F46; font-weight: 700; }
+.badge-ot-leave { background: #BFDBFE; color: #1E3A8A; font-weight: 700; }
 
 #app-shell {
   display: flex;
@@ -342,6 +342,7 @@ tbody tr:hover { background: rgba(0,0,0,.018); }
 .row-absent   { background: #FFF5F5             !important; }
 .row-holiday  { background: #EDE9FE             !important; }
 .row-ot-leave { background: #ECFDF5             !important; }
+.row-leave    { background: #DBEAFE             !important; } /* any leave or offset used — a step darker than .row-today */
 
 /* Pagination */
 .pagination-bar {
