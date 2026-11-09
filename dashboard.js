@@ -314,8 +314,7 @@ function renderTable() {
     let rowClass = '';
     if (isAbsent)                    rowClass = 'row-absent';
     else if (isHoliday)              rowClass = 'row-holiday';
-    else if (isOTLeave)              rowClass = 'row-ot-leave';
-    else if (hasUsage)               rowClass = 'row-used';
+    else if (isOTLeave || hasUsage)  rowClass = 'row-leave'; // any leave (SL/VL/BL) or offset used
     else if (isToday && notTimedOut) rowClass = 'row-today';
     else if (rec.otMinutes > 0)      rowClass = 'row-ot';
 
@@ -356,8 +355,16 @@ function renderTable() {
 
     // OT USE cell — plain indicator now (no button). Interacting with a usage (editing or
     // undoing it) happens via the row's View/Edit modal, not from the table directly.
-    const otUseCell = hasUsage
-      ? `<span class="badge badge-ot-leave" title="OT used as ${otUsageFullLabel(rec.otUsageType)}">${otUsageShortLabel(rec.otUsageType)}</span>`
+    // A date whose OT was used by an offset shows USED + the date it was used on.
+    const usageBadge = hasUsage
+      ? `<span class="badge badge-ot-leave" title="${otUsageFullLabel(rec.otUsageType)}">${otUsageShortLabel(rec.otUsageType)}</span>`
+      : '';
+    const usedBadge = rec.otUsedOn
+      ? `<span class="badge" style="background:var(--success);color:#fff;font-weight:700" title="OT used on ${formatDateShort(rec.otUsedOn)}">USED</span>
+         <span style="font-size:.68rem;color:var(--text-light)">${formatDateShort(rec.otUsedOn)}</span>`
+      : '';
+    const otUseCell = (usageBadge || usedBadge)
+      ? `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.2">${usageBadge}${usedBadge}</div>`
       : `<span class="badge badge-gray" style="min-width:54px;justify-content:center">N/A</span>`;
 
     return `<tr class="${rowClass} row-clickable" onclick="viewRecord('${rec.id}')">
@@ -410,6 +417,17 @@ function renderStats() {
   set('stat-ot-used',    minutesToHm(usedOT));
   set('stat-ot-rem',     minutesToHm(remOT));
   set('stat-absences',   absences);
+  renderLeaveBalance();
+}
+
+// Remaining leaves for the current year, shown above the Attendance Records table
+function renderLeaveBalance() {
+  const el = document.getElementById('leave-balance-strip');
+  if (!el) return;
+  const year = getDateKey().slice(0, 4);
+  const bal  = getLeaveBalance(allRecords, userSettings, year);
+  el.innerHTML = `<span style="font-weight:600;color:var(--text)">Leaves left (${year}):</span>` +
+    LEAVE_CODES.map(c => `<span class="badge ${bal[c].remaining > 0 ? 'badge-ot-leave' : 'badge-gray'}" title="${otUsageFullLabel(c)}">${c} ${bal[c].remaining}/${bal[c].total}</span>`).join('');
 }
 
 function getWorkdayHours() {
@@ -431,35 +449,76 @@ function applyOTRule(rawOTMins) {
   return applyOTCountingRule(rawOTMins, userSettings.otCountingRule);
 }
 
-// ── USE OT Modal ─────────────────────────────
+// ── USE LEAVE/OFFSET Modal ───────────────────
+
+// Offset dates picked in the Use modal / Edit modal (each id is a record date, yyyy-mm-dd).
+// editOffsetDates === null means "untouched" — the record keeps its current offset dates.
+let useOffsetDates   = [];
+let editOffsetDates  = null;
+let offsetPickerMode = 'use';
 
 function getRemainingOTMinutes() {
   return getOTPool(allRecords).remaining;
 }
 
-function getPendingUseDeductMins() {
-  const type = document.getElementById('use-type')?.value;
-  const wh   = getWorkdayHours();
-  if (type === 'leave')   return Math.round(wh * 60);
-  if (type === 'halfday') return Math.round((wh / 2) * 60); // always (Work Hours − Breaktime) / 2
-  const h = parseFloat(document.getElementById('use-hours')?.value) || 0;
-  return Math.round(h * 60);
+function minutesToHHMM(mins) {
+  const m = Math.max(0, Math.round(mins || 0));
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
-// Live-checks the pending Use OT amount against remaining OT; disables Confirm + shows a warning if short
+// Total OT minutes of the given record dates
+function getOffsetMins(dates) {
+  return (dates || []).reduce((sum, id) => {
+    const r = allRecords.find(x => x.id === id);
+    return sum + (r ? (r.otMinutes || 0) : 0);
+  }, 0);
+}
+
+function getPendingUseDeductMins() {
+  const type = document.getElementById('use-type')?.value;
+  return type === 'OS' ? getOffsetMins(useOffsetDates) : 0; // leaves never deduct OT
+}
+
+function updateUseLeaveInfo() {
+  const el = document.getElementById('use-leave-info');
+  if (!el) return;
+  const type = document.getElementById('use-type')?.value;
+  if (!isLeaveUsage(type)) { el.textContent = ''; return; }
+  const year = (document.getElementById('use-leave-date')?.value || getDateKey()).slice(0, 4);
+  const b = getLeaveBalance(allRecords, userSettings, year)[type];
+  let text = `${b.remaining} of ${b.total} left for ${year}`;
+  if (type === 'BL' && userSettings.birthDate) text += ` · Birthday: ${formatDateShort(userSettings.birthDate).slice(0, 5)}`;
+  el.textContent = text;
+}
+
+// Live-checks the pending Leave/Offset; disables Confirm + shows a warning if it can't be filed
 function validateUseForm() {
-  const remOT   = getRemainingOTMinutes();
-  const deduct  = getPendingUseDeductMins();
+  const type = document.getElementById('use-type')?.value;
+  const date = document.getElementById('use-leave-date')?.value;
   const warning = document.getElementById('use-insufficient-warning');
   const warningText = document.getElementById('use-insufficient-warning-text');
-  const btn     = document.getElementById('btn-confirm-use');
-  const insufficient = deduct > 0 && deduct > remOT;
-  if (warning) warning.classList.toggle('hidden', !insufficient);
-  if (warningText && insufficient) {
-    warningText.textContent = `You need ${minutesToHm(deduct)} but only have ${minutesToHm(remOT)} of OT available.`;
+  const btn = document.getElementById('btn-confirm-use');
+  let msg = '';
+
+  if (isLeaveUsage(type)) {
+    const year = (date || getDateKey()).slice(0, 4);
+    const b = getLeaveBalance(allRecords, userSettings, year)[type];
+    const existing = allRecords.find(r => r.id === date);
+    const sameLeaveAlready = existing && existing.otUsageType === type; // re-filing doesn't use a 2nd credit
+    if (b.remaining <= 0 && !sameLeaveAlready) {
+      msg = `No ${otUsageFullLabel(type)} credits left for ${year}.${b.total === 0 ? ' Set your leave credits in the Schedule tab.' : ''}`;
+    }
+  } else {
+    const remOT  = getRemainingOTMinutes();
+    const deduct = getPendingUseDeductMins();
+    if (deduct > 0 && deduct > remOT) msg = `You need ${minutesToHm(deduct)} but only have ${minutesToHm(remOT)} of OT available.`;
   }
-  if (btn) btn.disabled = insufficient;
-  return !insufficient;
+
+  if (warning) warning.classList.toggle('hidden', !msg);
+  if (warningText && msg) warningText.textContent = msg;
+  if (btn) btn.disabled = !!msg;
+  updateUseLeaveInfo();
+  return !msg;
 }
 
 function openUseModal() {
@@ -467,76 +526,127 @@ function openUseModal() {
     showToast('OT usage is disabled for interns. Your OT hours are still being counted.', 'default');
     return;
   }
-  const remOT = getRemainingOTMinutes();
-  if (remOT <= 0) {
-    showToast('No OT hours available to use.', 'default');
-    return;
-  }
 
-  document.getElementById('use-modal-avail').textContent = minutesToHm(remOT);
+  document.getElementById('use-modal-avail').textContent = minutesToHm(getRemainingOTMinutes());
   document.getElementById('use-leave-date').value        = getDateKey();
-  document.getElementById('use-type').value              = 'leave';
+  document.getElementById('use-type').value              = 'SL';
   document.getElementById('use-timein').value            = userSettings.workStart || '08:00';
   document.getElementById('use-hours').value             = '';
   document.getElementById('use-note').value              = '';
+  useOffsetDates = [];
   handleUseTypeChange();
   openModal('use-modal');
 }
 
+function refreshUseOffsetSummary() {
+  const el = document.getElementById('use-offset-summary');
+  const mins = getOffsetMins(useOffsetDates);
+  const n = useOffsetDates.length;
+  if (el) el.textContent = n ? `${n} date${n !== 1 ? 's' : ''} selected — total ${minutesToHHMM(mins)}` : 'No dates selected.';
+  const hoursEl = document.getElementById('use-hours');
+  if (hoursEl) hoursEl.value = n ? (mins / 60).toFixed(4) : '';
+}
+
 function handleUseTypeChange() {
   const type = document.getElementById('use-type')?.value;
-  const hg   = document.getElementById('use-hours-group');
-  const hint = document.getElementById('use-hours-hint');
+  const isOffset = type === 'OS';
+  const og = document.getElementById('use-offset-group');
   const timeInGroup = document.getElementById('use-timein-group');
-  const minOutHint   = document.getElementById('use-min-timeout-hint');
-  const wh   = getWorkdayHours(); // already (Work Start–End minus Breaktime Hours)
-
-  if (type === 'leave') {
-    if (hg) hg.style.display = 'none';
-    if (timeInGroup) timeInGroup.style.display = 'none';
-    if (minOutHint) minOutHint.classList.add('hidden');
-  } else if (type === 'halfday') {
-    // Half day is always (Work Hours − Breaktime) / 2 — no manual entry needed
-    if (hg) hg.style.display = 'none';
-    const hoursEl = document.getElementById('use-hours');
-    if (hoursEl) hoursEl.value = (wh / 2).toFixed(2);
-    if (timeInGroup) timeInGroup.style.display = 'block';
-  } else {
-    if (hg)   hg.style.display = 'block';
-    if (hint) hint.textContent = 'Enter how many OT hours to deduct for offset.';
-    const hoursEl = document.getElementById('use-hours');
-    if (hoursEl) hoursEl.value = '';
-    if (timeInGroup) timeInGroup.style.display = 'block';
-  }
+  if (og) og.classList.toggle('hidden', !isOffset);
+  if (timeInGroup) timeInGroup.style.display = isOffset ? 'block' : 'none';
+  if (isOffset) refreshUseOffsetSummary();
   updateMinTimeOutHint();
   validateUseForm();
 }
 
-// Shows a live "minimum Time Out" hint for Half Day / Undertime, based on Time In + declared hours.
-// Informational only — it doesn't block anything here; the actual warning happens later when the
-// real Time Out for that day is logged (see recalcEditModal / confirmPresentTimeout).
+// Offset only. Live hint: a full-day offset is logged as a leave day; otherwise show the minimum Time Out.
+// Informational only — the actual warning happens later when the real Time Out for that day is logged.
 function updateMinTimeOutHint() {
   const type = document.getElementById('use-type')?.value;
   const hintEl = document.getElementById('use-min-timeout-hint');
   if (!hintEl) return;
-  if (type === 'leave') { hintEl.classList.add('hidden'); return; }
-
-  const tin = document.getElementById('use-timein')?.value;
-  const s = timeInputToHm(tin);
-  if (!s) { hintEl.classList.add('hidden'); return; }
+  const declaredMins = getOffsetMins(useOffsetDates);
+  if (type !== 'OS' || declaredMins <= 0) { hintEl.classList.add('hidden'); return; }
 
   const wh = getWorkdayHours();
-  let minMins;
-  if (type === 'halfday') {
-    minMins = (s.h * 60 + s.m) + Math.round((wh / 2) * 60);
-  } else {
-    const h = parseFloat(document.getElementById('use-hours')?.value) || 0;
-    const declaredMins = Math.round(h * 60);
-    const expectedWorkMins = Math.max(0, Math.round(wh * 60) - declaredMins);
-    minMins = (s.h * 60 + s.m) + getBreakMinutes() + expectedWorkMins;
+  if (declaredMins >= Math.round(wh * 60)) {
+    hintEl.classList.remove('hidden');
+    hintEl.textContent = 'This covers a full workday, so it will be logged as a leave day (no Time In needed).';
+    return;
   }
+  const s = timeInputToHm(document.getElementById('use-timein')?.value);
+  if (!s) { hintEl.classList.add('hidden'); return; }
+  const expectedWorkMins = Math.max(0, Math.round(wh * 60) - declaredMins);
+  const minMins = (s.h * 60 + s.m) + getBreakMinutes() + expectedWorkMins;
   hintEl.classList.remove('hidden');
   hintEl.textContent = `Based on this, your minimum Time Out that day is ${minutesToClockLabel(minMins)}.`;
+}
+
+// ── Select Offset Dates picker ────────────────
+// Lists every date that still has unused OT hours. Used by both the Use modal and the Edit modal.
+function openOffsetPicker(mode) {
+  offsetPickerMode = mode;
+  let usageDate, selected;
+  if (mode === 'edit') {
+    const rec = allRecords.find(r => r.id === modalRecordId);
+    usageDate = modalRecordId;
+    selected  = editOffsetDates !== null ? editOffsetDates : ((rec && rec.otOffsetDates) || []);
+  } else {
+    usageDate = document.getElementById('use-leave-date')?.value;
+    if (!usageDate) { showToast('Please select the date to apply this to first.', 'error'); return; }
+    selected = useOffsetDates;
+  }
+
+  const candidates = allRecords
+    .filter(r => (r.otMinutes || 0) > 0 && r.id !== usageDate && (!r.otUsedOn || r.otUsedOn === usageDate))
+    .slice().sort((a, b) => a.date.localeCompare(b.date));
+
+  const list = document.getElementById('offset-dates-list');
+  list.innerHTML = candidates.length
+    ? candidates.map(r => `
+        <label style="display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-bottom:1px solid var(--border);cursor:pointer;font-size:.86rem">
+          <input type="checkbox" class="offset-date-check" value="${r.id}" data-mins="${r.otMinutes}" ${selected.includes(r.id) ? 'checked' : ''} onchange="updateOffsetTotal()"/>
+          <span>${formatDateShort(r.date)} (${minutesToHHMM(r.otMinutes)})</span>
+        </label>`).join('')
+    : `<div style="padding:1rem;text-align:center;font-size:.82rem;color:var(--text-light)">No dates with available OT hours.</div>`;
+  updateOffsetTotal();
+  openModal('offset-dates-modal');
+}
+
+function updateOffsetTotal() {
+  let mins = 0;
+  document.querySelectorAll('.offset-date-check:checked').forEach(cb => { mins += parseInt(cb.dataset.mins) || 0; });
+  const el = document.getElementById('offset-dates-total');
+  if (el) el.textContent = minutesToHHMM(mins);
+}
+
+function applyOffsetSelection() {
+  const dates = [...document.querySelectorAll('.offset-date-check:checked')].map(cb => cb.value).sort();
+  closeModal('offset-dates-modal');
+  document.body.style.overflow = 'hidden'; // the Use / Record modal underneath is still open
+  if (offsetPickerMode === 'edit') {
+    editOffsetDates = dates;
+    handleEditUsageTypeChange();
+  } else {
+    useOffsetDates = dates;
+    refreshUseOffsetSummary();
+    updateMinTimeOutHint();
+    validateUseForm();
+  }
+}
+
+// Keeps the "USED" marker on the source OT dates in sync with the offset record that consumes them
+async function syncOffsetSources(usageDate, oldDates, newDates) {
+  oldDates = oldDates || []; newDates = newDates || [];
+  const col = db.collection('users').doc(currentUser.uid).collection('attendance');
+  const exists = id => allRecords.some(r => r.id === id);
+  const batch = db.batch();
+  let ops = 0;
+  newDates.forEach(id => { if (exists(id)) { batch.update(col.doc(id), { otUsedOn: usageDate }); ops++; } });
+  oldDates.filter(id => !newDates.includes(id)).forEach(id => {
+    if (exists(id)) { batch.update(col.doc(id), { otUsedOn: firebase.firestore.FieldValue.delete() }); ops++; }
+  });
+  if (ops) await batch.commit();
 }
 
 async function confirmUseOT() {
@@ -545,28 +655,23 @@ async function confirmUseOT() {
   const note      = document.getElementById('use-note').value.trim();
   const tin       = document.getElementById('use-timein')?.value || userSettings.workStart || '08:00';
   const wh        = getWorkdayHours();
-
-  let deductMins = 0;
-  let usageLabel = '';
-  if (type === 'leave') {
-    deductMins = Math.round(wh * 60);
-    usageLabel = 'FL-OT';
-  } else if (type === 'halfday') {
-    deductMins = Math.round((wh / 2) * 60); // always (Work Hours − Breaktime) / 2 — no manual entry
-    usageLabel = 'HD-OT';
-  } else {
-    const h = parseFloat(document.getElementById('use-hours').value);
-    if (!h || h <= 0) { showToast('Please enter hours to deduct.', 'error'); return; }
-    deductMins = Math.round(h * 60);
-    usageLabel = 'LATE-OT';
-  }
+  const isLeave   = isLeaveUsage(type);
 
   if (!leaveDate) { showToast('Please select a date.', 'error'); return; }
 
-  const remOT = getRemainingOTMinutes();
-  if (deductMins > remOT) {
-    validateUseForm();
-    showToast(`Insufficient OT — you need ${minutesToHm(deductMins)} but only have ${minutesToHm(remOT)} available.`, 'error');
+  let deductMins = 0;
+  let usageLabel = type;      // SL / VL / BL
+  let offsetDates = [];
+  if (!isLeave) {
+    usageLabel  = 'LATE-OT';  // Offset keeps its stored code so older records keep working
+    offsetDates = useOffsetDates.slice();
+    if (offsetDates.length === 0) { showToast('Please select the offset dates.', 'error'); return; }
+    if (offsetDates.includes(leaveDate)) { showToast("The date you're applying this to can't also be an offset date. Re-select the dates.", 'error'); return; }
+    deductMins = getOffsetMins(offsetDates);
+  }
+
+  if (!validateUseForm()) {
+    showToast(document.getElementById('use-insufficient-warning-text').textContent, 'error');
     return;
   }
 
@@ -576,27 +681,31 @@ async function confirmUseOT() {
   if (leaveSnap.exists) {
     const proceed = await showConfirmDialog({
       title: 'Record Already Exists',
-      message: `A record for <strong>${formatDateLong(leaveDate)}</strong> already exists. Applying this OT usage will modify it. Continue?`,
+      message: `A record for <strong>${formatDateLong(leaveDate)}</strong> already exists. Applying this will modify it. Continue?`,
       confirmLabel: 'Continue',
       danger: true,
     });
     if (!proceed) return;
   }
+  const prevDates = (leaveSnap.exists && leaveSnap.data().otOffsetDates) || [];
 
   const btn = document.getElementById('btn-confirm-use');
   btn.disabled = true; btn.textContent = 'Saving…';
 
   try {
-    // OT is pooled — usage doesn't draw from any one specific "source" day, it's just declared
-    // against the total available. The transaction lives entirely on the leave-date record.
+    // Leaves (and an offset that covers a whole workday) are logged as a leave day — no clock in/out.
+    const fullDay = isLeave || deductMins >= Math.round(wh * 60);
+    const offsetField = leaveSnap.exists
+      ? { otOffsetDates: isLeave ? firebase.firestore.FieldValue.delete() : offsetDates }
+      : (isLeave ? {} : { otOffsetDates: offsetDates });
 
-    if (usageLabel === 'FL-OT') {
-      // No work happens that day — a flat credit, Time Out shows "N/A"
+    if (fullDay) {
       const leaveData = {
         date: leaveDate, status: 'ot-leave',
         otUsageType: usageLabel, otUsageMins: deductMins, otUsageNote: note,
         timeInDisplay: null, timeOutStamp: null, timeOutDisplay: null,
-        workMinutes: deductMins, otMinutes: 0,
+        workMinutes: Math.round(wh * 60), otMinutes: 0,
+        ...offsetField,
       };
       if (!leaveSnap.exists) {
         await leaveRef.set({ ...leaveData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -604,17 +713,15 @@ async function confirmUseOT() {
         await leaveRef.update(leaveData);
       }
     } else {
-      // Half Day / Undertime — the person does work that day. Time In defaults to schedule
-      // start (editable); Work Hours are computed from their actual logged Time Out once
-      // entered, not fixed to the declared amount — the declared hours are just what's
-      // subtracted from the OT pool, per the OT Counting Condition rule already applied
-      // when that OT was originally earned.
+      // Partial-day offset — the person does work that day. Time In defaults to schedule
+      // start (editable); Work Hours are computed from their actual logged Time Out once entered.
       const inParsed = timeInputToHm(tin);
       const timeInDisplay = inParsed ? formatTime12(inParsed.h, inParsed.m) : null;
       const leaveData = {
         date: leaveDate, status: 'present',
         otUsageType: usageLabel, otUsageMins: deductMins, otUsageNote: note,
         timeInDisplay,
+        ...offsetField,
       };
       if (!leaveSnap.exists) {
         await leaveRef.set({
@@ -626,11 +733,13 @@ async function confirmUseOT() {
         // Preserve any real clock data already logged for that date — only set Time In if
         // it wasn't already recorded, so we don't overwrite an actual clock-in.
         if (!leaveSnap.data().timeInDisplay) await leaveRef.update(leaveData);
-        else await leaveRef.update({ otUsageType: usageLabel, otUsageMins: deductMins, otUsageNote: note });
+        else await leaveRef.update({ otUsageType: usageLabel, otUsageMins: deductMins, otUsageNote: note, ...offsetField });
       }
     }
 
-    showToast(`OT logged as ${otUsageShortLabel(usageLabel)} on ${formatDateShort(leaveDate)} ✓`, 'success');
+    await syncOffsetSources(leaveDate, prevDates, offsetDates);
+
+    showToast(`${otUsageShortLabel(usageLabel)} logged on ${formatDateShort(leaveDate)} ✓`, 'success');
     closeModal('use-modal');
     await loadRecords();
   } catch(e) {
@@ -651,15 +760,15 @@ function undoUse(id) {
 }
 
 function renderConfirmUndoMode(rec, titleEl, bodyEl, footerEl) {
-  titleEl.textContent = 'Undo OT Usage';
+  titleEl.textContent = 'Undo Leave/Offset';
   const label = otUsageShortLabel(rec.otUsageType);
   bodyEl.innerHTML = `
     <p style="font-size:.88rem;color:var(--text)">
       Undo this ${label} usage for <strong>${formatDateLong(rec.date)}</strong>?
-      ${rec.otUsageType === 'FL-OT'
+      ${rec.status === 'ot-leave'
         ? ' This record will be removed since no work was logged that day.'
-        : ' The day keeps its logged attendance — only the OT usage will be removed.'}
-      Your OT hours will be restored.
+        : ' The day keeps its logged attendance — only the usage will be removed.'}
+      ${isLeaveUsage(rec.otUsageType) ? 'Your leave credit will be restored.' : 'Your OT hours will be restored.'}
     </p>`;
   footerEl.innerHTML = `
     <button class="btn btn-ghost" onclick="setModalMode('view')">No, Keep It</button>
@@ -671,27 +780,30 @@ async function executeUndoUse(id) {
   if (!rec) return;
   try {
     const ref = db.collection('users').doc(currentUser.uid).collection('attendance').doc(id);
-    if (rec.otUsageType === 'FL-OT') {
-      // Full-day leave placeholder — nothing was actually worked, so remove it entirely
+    if (rec.status === 'ot-leave') {
+      // Leave-day placeholder — nothing was actually worked, so remove it entirely
       await ref.delete();
-      showToast('OT usage undone — leave day removed.', 'default');
+      showToast('Usage undone — leave day removed.', 'default');
     } else {
-      // Half Day / Offset (stored code LATE-OT) — keep the real attendance logged that day, just drop the usage
+      // Partial-day offset — keep the real attendance logged that day, just drop the usage
       await ref.update({
         otUsageType: firebase.firestore.FieldValue.delete(),
         otUsageMins: firebase.firestore.FieldValue.delete(),
         otUsageNote: firebase.firestore.FieldValue.delete(),
         otUsageDate: firebase.firestore.FieldValue.delete(),
         otSourceId:  firebase.firestore.FieldValue.delete(),
+        otOffsetDates: firebase.firestore.FieldValue.delete(),
       });
-      showToast('OT usage undone.', 'default');
+      showToast('Usage undone.', 'default');
     }
+    await syncOffsetSources(id, rec.otOffsetDates || [], []); // frees the dates that were marked USED
     closeModal('record-modal');
     await loadRecords();
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }
 }
+
 let activeFilters = {};
 
 function applyFilters() {
@@ -736,8 +848,9 @@ function getFilteredTableRecords() {
     if (activeFilters.status   && r.status !== activeFilters.status) return false;
     if (activeFilters.dateFrom && r.date < activeFilters.dateFrom)   return false;
     if (activeFilters.dateTo   && r.date > activeFilters.dateTo)     return false;
-    if (activeFilters.otUse === 'used'    && !r.otUsageType)         return false;
-    if (activeFilters.otUse === 'unused'  && r.otUsageType)          return false;
+    const otIsUsed = isOTFundedUsage(r.otUsageType) || !!r.otUsedOn; // leaves (SL/VL/BL) don't count as OT used
+    if (activeFilters.otUse === 'used'    && !otIsUsed)              return false;
+    if (activeFilters.otUse === 'unused'  && otIsUsed)               return false;
     if (activeFilters.otUse === 'has-ot'  && !(r.otMinutes > 0))     return false;
     return true;
   });
@@ -999,16 +1112,22 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
       </div>
       <div class="flex justify-between items-center">
         <span class="text-sm" style="color:var(--text-light)">OT Used</span>
-        <span class="badge ${rec.otUsageType?'badge-success':'badge-gray'}">${rec.otUsageType ? `Yes (${formatDateShort(rec.date)})` : 'No'}</span>
+        <span class="badge ${(rec.otUsedOn || isOTFundedUsage(rec.otUsageType)) ? 'badge-success' : 'badge-gray'}">${rec.otUsedOn ? `Yes (${formatDateShort(rec.otUsedOn)})` : isOTFundedUsage(rec.otUsageType) ? `Yes (${formatDateShort(rec.date)})` : 'No'}</span>
       </div>
       ${rec.otUsageType ? `
       <div class="flex justify-between items-center">
         <span class="text-sm" style="color:var(--text-light)">Usage Type</span>
         <strong>${otUsageFullLabel(rec.otUsageType)}</strong>
-      </div>
+      </div>` : ''}
+      ${isOTFundedUsage(rec.otUsageType) ? `
       <div class="flex justify-between items-center">
         <span class="text-sm" style="color:var(--text-light)">Hours Used</span>
         <strong>${minutesToHm(rec.otUsageMins || 0)}</strong>
+      </div>` : ''}
+      ${rec.otOffsetDates && rec.otOffsetDates.length ? `
+      <div class="flex justify-between items-center" style="align-items:flex-start;gap:1rem">
+        <span class="text-sm" style="color:var(--text-light);white-space:nowrap">Offset Dates</span>
+        <strong style="text-align:right;font-size:.82rem">${rec.otOffsetDates.map(d => formatDateShort(d)).join(', ')}</strong>
       </div>` : ''}
       ${isOTLeave && rec.otSourceId ? `
       <div class="flex justify-between items-center">
@@ -1031,7 +1150,7 @@ function renderViewMode(rec, titleEl, bodyEl, footerEl) {
 
   footerEl.innerHTML = `
     <button class="btn btn-ghost" style="color:var(--danger);margin-right:auto" onclick="setModalMode('confirm-delete')">🗑 Delete</button>
-    ${rec.otUsageType ? `<button class="btn btn-ghost" onclick="setModalMode('confirm-undo')">↩ Undo OT Usage</button>` : ''}
+    ${rec.otUsageType ? `<button class="btn btn-ghost" onclick="setModalMode('confirm-undo')">↩ Undo Leave/Offset</button>` : ''}
     <button class="btn btn-primary" onclick="setModalMode('confirm-edit')">✏️ Edit</button>
     <button class="btn btn-ghost" onclick="closeModal('record-modal')">Close</button>`;
 }
@@ -1049,6 +1168,7 @@ function renderConfirmEditMode(rec, titleEl, bodyEl, footerEl) {
 // ── EDIT mode ─────────────────────────────────
 function renderEditMode(rec, titleEl, bodyEl, footerEl) {
   const { workStart, workEnd } = getEffectiveWorkHours(rec.id);
+  editOffsetDates = null; // offset dates stay as saved until the user re-picks them
 
   titleEl.textContent = 'Edit Record';
 
@@ -1127,21 +1247,23 @@ function renderEditMode(rec, titleEl, bodyEl, footerEl) {
       <textarea class="form-control" id="em-note" rows="2" style="resize:vertical">${rec.note || ''}</textarea>
     </div>
     <div class="form-group" style="background:var(--bg);border-radius:8px;padding:.85rem;border:1px solid var(--border)">
-      <div style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:.2rem">OT Usage</div>
-      <div style="font-size:.72rem;color:var(--text-light);margin-bottom:.6rem">${rec.otUsageType ? 'Change or remove the OT usage declared for this day.' : "Forgot to use your offset hours for this day? You can declare it here."}</div>
+      <div style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:.2rem">Leave/Offset</div>
+      <div style="font-size:.72rem;color:var(--text-light);margin-bottom:.6rem">${rec.otUsageType ? 'Change or remove the leave/offset declared for this day.' : "Forgot to file a leave or offset for this day? You can declare it here."}</div>
       <div class="form-group" style="margin-bottom:.6rem">
         <label class="form-label" style="font-size:.78rem">Usage Type</label>
         <select class="form-control" id="em-usage-type" onchange="handleEditUsageTypeChange()">
-          <option value="NONE"    ${!rec.otUsageType ? 'selected' : ''}>${rec.otUsageType ? 'None — remove OT usage' : 'None — no OT usage'}</option>
-          <option value="FL-OT"   ${rec.otUsageType==='FL-OT'  ?'selected':''}>Full Day Leave (FL-OT)</option>
-          <option value="HD-OT"   ${rec.otUsageType==='HD-OT'  ?'selected':''}>Half Day (HD-OT)</option>
-          <option value="LATE-OT" ${rec.otUsageType==='LATE-OT'?'selected':''}>Offset (OS-OT)</option>
+          <option value="NONE"    ${!rec.otUsageType ? 'selected' : ''}>${rec.otUsageType ? 'None — remove usage' : 'None — no leave/offset'}</option>
+          <option value="SL"      ${rec.otUsageType==='SL'     ?'selected':''}>Sick Leave (SL)</option>
+          <option value="VL"      ${rec.otUsageType==='VL'     ?'selected':''}>Vacation Leave (VL)</option>
+          <option value="BL"      ${rec.otUsageType==='BL'     ?'selected':''}>Birthday Leave (BL)</option>
+          <option value="LATE-OT" ${rec.otUsageType==='LATE-OT'?'selected':''}>Offset (OS)</option>
+          ${rec.otUsageType==='FL-OT' ? '<option value="FL-OT" selected>Full Day Leave (FL-OT)</option>' : ''}
+          ${rec.otUsageType==='HD-OT' ? '<option value="HD-OT" selected>Half Day (HD-OT)</option>' : ''}
         </select>
       </div>
       <div class="form-group hidden" id="em-usage-hours-group" style="margin-bottom:.4rem">
-        <label class="form-label" style="font-size:.78rem">Hours to Deduct</label>
-        <input class="form-control" type="number" id="em-usage-hours" min="0.25" step="0.25"
-               value="${((rec.otUsageMins||0)/60).toFixed(2)}" oninput="handleEditUsageTypeChange()"/>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="openOffsetPicker('edit')">Select Offset Dates</button>
+        <div class="form-hint" id="em-offset-summary"></div>
       </div>
       <div class="hidden" id="em-usage-insufficient-warning" style="display:flex;gap:.5rem;align-items:flex-start;background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:8px;padding:.5rem .65rem;font-size:.76rem;margin-top:.3rem">
         <span>⚠️</span><span id="em-usage-insufficient-warning-text"></span>
@@ -1169,37 +1291,56 @@ function handleEditUsageTypeChange() {
   const typeEl = document.getElementById('em-usage-type');
   if (!typeEl) return; // record has no otUsageType — nothing to edit
   const type = typeEl.value;
-  const hg   = document.getElementById('em-usage-hours-group');
+  const og   = document.getElementById('em-usage-hours-group'); // holds the Select Offset Dates button
   const wh   = getWorkdayHours();
+  const rec  = allRecords.find(r => r.id === modalRecordId);
 
-  let deductMins;
-  if (type === 'NONE') {
-    if (hg) hg.classList.add('hidden');
-    deductMins = 0;
-  } else if (type === 'FL-OT') {
-    if (hg) hg.classList.add('hidden');
+  let deductMins = 0, offsetDates = [], legacyOffset = false;
+  if (og) og.classList.toggle('hidden', type !== 'LATE-OT');
+
+  if (type === 'FL-OT') {
     deductMins = Math.round(wh * 60);
   } else if (type === 'HD-OT') {
-    if (hg) hg.classList.add('hidden');
     deductMins = Math.round((wh / 2) * 60);
-  } else {
-    if (hg) hg.classList.remove('hidden');
-    const h = parseFloat(document.getElementById('em-usage-hours')?.value) || 0;
-    deductMins = Math.round(h * 60);
+  } else if (type === 'LATE-OT') {
+    if (editOffsetDates !== null) {
+      offsetDates = editOffsetDates;
+      deductMins  = getOffsetMins(offsetDates);
+    } else if (rec && rec.otUsageType === 'LATE-OT') {
+      // untouched: keep what was saved (older offsets have hours but no dates)
+      offsetDates  = rec.otOffsetDates || [];
+      deductMins   = rec.otUsageMins || 0;
+      legacyOffset = offsetDates.length === 0;
+    }
+    const sum = document.getElementById('em-offset-summary');
+    if (sum) {
+      sum.textContent = offsetDates.length
+        ? `${offsetDates.length} date${offsetDates.length !== 1 ? 's' : ''} selected — total ${minutesToHHMM(deductMins)}`
+        : (legacyOffset ? `Current offset: ${minutesToHHMM(deductMins)} (no dates recorded)` : 'No dates selected.');
+    }
   }
 
-  const rec = allRecords.find(r => r.id === modalRecordId);
-  const remOTExcludingThis = getRemainingOTMinutesExcluding(rec ? rec.id : null);
+  // Validate: OT-funded usages against remaining OT; leaves against the yearly credits
+  let message = '';
+  if (isOTFundedUsage(type)) {
+    const remOTExcludingThis = getRemainingOTMinutesExcluding(rec ? rec.id : null);
+    if (deductMins > 0 && deductMins > remOTExcludingThis) {
+      message = `You need ${minutesToHm(deductMins)} but only have ${minutesToHm(remOTExcludingThis)} of OT available.`;
+    }
+  } else if (isLeaveUsage(type) && rec && rec.otUsageType !== type) {
+    const year = rec.date.slice(0, 4);
+    const b = getLeaveBalance(allRecords.filter(r => r.id !== rec.id), userSettings, year)[type];
+    if (b.remaining <= 0) {
+      message = `No ${otUsageFullLabel(type)} credits left for ${year}.${b.total === 0 ? ' Set your leave credits in the Schedule tab.' : ''}`;
+    }
+  }
   const warning = document.getElementById('em-usage-insufficient-warning');
   const warningText = document.getElementById('em-usage-insufficient-warning-text');
-  const insufficient = type !== 'NONE' && deductMins > 0 && deductMins > remOTExcludingThis;
-  if (warning) warning.classList.toggle('hidden', !insufficient);
-  if (warningText && insufficient) {
-    warningText.textContent = `You need ${minutesToHm(deductMins)} but only have ${minutesToHm(remOTExcludingThis)} of OT available.`;
-  }
+  if (warning) warning.classList.toggle('hidden', !message);
+  if (warningText && message) warningText.textContent = message;
   const saveBtn = document.querySelector('#record-modal-footer .btn-primary');
-  if (saveBtn) saveBtn.disabled = insufficient;
-  return { type, deductMins, insufficient };
+  if (saveBtn) saveBtn.disabled = !!message;
+  return { type, deductMins, insufficient: !!message, message, offsetDates, legacyOffset };
 }
 
 // Remaining OT if we ignore one specific record's own declared usage (used while editing that
@@ -1288,13 +1429,14 @@ function recalcEditModal() {
 // they may want to use OT hours to cover the shortfall instead of it going unaccounted for.
 function isEarlyCheckoutWithoutOT(toutHm, workEndHm) {
   if (!toutHm || !workEndHm) return false;
+  if (userSettings.otCountingRule && userSettings.otCountingRule.startRule === 'none') return false; // no OT to offset with
   return (toutHm.h * 60 + toutHm.m) < (workEndHm.h * 60 + workEndHm.m);
 }
 
 // For a Half Day / Undertime OT-usage record, computes the minimum valid Time Out given a Time In —
 // used to softly warn (never block) if the logged Time Out falls short of what was declared.
 function computeMinTimeOutForUsage(rec, tinHm) {
-  if (!rec || !rec.otUsageType || rec.otUsageType === 'FL-OT' || !tinHm) return null;
+  if (!rec || !rec.otUsageType || rec.otUsageType === 'FL-OT' || isLeaveUsage(rec.otUsageType) || !tinHm) return null;
   const wh = getWorkdayHours(); // hours, already break-excluded
   if (rec.otUsageType === 'HD-OT') {
     const expectedWorkMins = Math.round((wh / 2) * 60); // half day assumed break-free
@@ -1329,10 +1471,15 @@ async function saveEditFromModal() {
 
   // If this record has an editable OT Usage section, re-validate + capture the (possibly changed) values
   let usageUpdate = null;
+  let newOffsetDates = null; // null = offset dates unchanged
   if (document.getElementById('em-usage-type')) {
     const result = handleEditUsageTypeChange();
     if (result && result.insufficient) {
-      showToast(`Insufficient OT for this usage type — you need ${minutesToHm(result.deductMins)}.`, 'error');
+      showToast(result.message, 'error');
+      return;
+    }
+    if (result && result.type === 'LATE-OT' && !result.offsetDates.length && !result.legacyOffset) {
+      showToast('Please select the offset dates.', 'error');
       return;
     }
     if (result && result.type === 'NONE' && rec.otUsageType) {
@@ -1344,10 +1491,18 @@ async function saveEditFromModal() {
         otUsageNote: firebase.firestore.FieldValue.delete(),
         otUsageDate: firebase.firestore.FieldValue.delete(),
         otSourceId:  firebase.firestore.FieldValue.delete(),
+        otOffsetDates: firebase.firestore.FieldValue.delete(),
       };
+      newOffsetDates = [];
     } else if (result && result.type !== 'NONE') {
       // New or changed usage — declared here retroactively if the record didn't have one
       usageUpdate = { otUsageType: result.type, otUsageMins: result.deductMins };
+      if (result.type === 'LATE-OT') {
+        if (!result.legacyOffset) { usageUpdate.otOffsetDates = result.offsetDates; newOffsetDates = result.offsetDates; }
+      } else {
+        if (rec.otOffsetDates && rec.otOffsetDates.length) usageUpdate.otOffsetDates = firebase.firestore.FieldValue.delete();
+        newOffsetDates = [];
+      }
     }
   }
 
@@ -1406,6 +1561,7 @@ async function saveEditFromModal() {
 
   try {
     await db.collection('users').doc(currentUser.uid).collection('attendance').doc(date).update(data);
+    if (newOffsetDates !== null) await syncOffsetSources(date, rec.otOffsetDates || [], newOffsetDates);
     showToast('Record modified ✓', 'success');
     const hasUsage = !!(usageUpdate ? usageUpdate.otUsageType : rec.otUsageType);
     if (dropStatus === 'present' && !hasUsage && isEarlyCheckoutWithoutOT(parsed, timeInputToHm(wEnd))) {
@@ -1431,7 +1587,9 @@ function renderConfirmDeleteMode(rec, titleEl, bodyEl, footerEl) {
 
 async function executeDelete(id) {
   try {
+    const delRec = allRecords.find(r => r.id === id);
     await db.collection('users').doc(currentUser.uid).collection('attendance').doc(id).delete();
+    if (delRec && delRec.otOffsetDates && delRec.otOffsetDates.length) await syncOffsetSources(id, delRec.otOffsetDates, []);
     delete customWorkHours[id];
     showToast('Record deleted.', 'default');
     closeModal('record-modal');
@@ -1698,5 +1856,133 @@ async function saveRecord() {
     showToast('Error: ' + e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = 'Save Record';
+  }
+}
+
+
+// ── Tenure Ended ─────────────────────────────
+// Archives every attendance record into users/{uid}/companies/{id}/records and saves the job
+// details under Companies. Dashboard, Attendance, Overtime and Badges are all derived from the
+// attendance collection, so emptying it resets them. Undo (on the Companies page) moves it all back.
+let tenureRating = 0;
+
+function setTenureRating(n) {
+  tenureRating = (tenureRating === n) ? 0 : n; // tap the same star again to clear
+  document.querySelectorAll('#t-rating button').forEach(b => {
+    b.style.color = parseInt(b.dataset.v) <= tenureRating ? '#F59E0B' : '#CBD5E1';
+  });
+}
+
+function openTenureModal() {
+  const g = id => document.getElementById(id);
+  const dates = allRecords.map(r => r.date).sort();
+  g('t-company').value     = userSettings.companyName || '';
+  g('t-title').value       = userSettings.jobPosition || '';
+  g('t-type').value        = userSettings.userType === 'intern' ? 'Internship / OJT' : 'Full-time';
+  g('t-setup').value       = 'On-site';
+  g('t-location').value    = '';
+  g('t-start').value       = dates[0] || '';
+  g('t-end').value         = getDateKey();
+  g('t-reason').value      = '';
+  g('t-reason-other').value = '';
+  g('t-reason-other').classList.add('hidden');
+  g('t-description').value = '';
+  g('t-skills').value      = '';
+  g('t-achievements').value = '';
+  tenureRating = 0; setTenureRating(0);
+  openModal('tenure-modal');
+}
+
+// Runs write operations in batches (Firestore allows 500 per batch)
+async function commitInChunks(ops, size = 400) {
+  for (let i = 0; i < ops.length; i += size) {
+    const batch = db.batch();
+    ops.slice(i, i + size).forEach(fn => fn(batch));
+    await batch.commit();
+  }
+}
+
+async function saveTenure() {
+  const g = id => document.getElementById(id);
+  const company = g('t-company').value.trim();
+  const reason  = g('t-reason').value;
+  const reasonOther = g('t-reason-other').value.trim();
+  const start = g('t-start').value, end = g('t-end').value;
+
+  if (!company)  { showToast('Please enter the company name.', 'error'); return; }
+  if (!end)      { showToast('Please set the end date.', 'error'); return; }
+  if (start && end < start) { showToast('End date cannot be before the start date.', 'error'); return; }
+  if (!reason)   { showToast('Please select a reason for ending your tenure.', 'error'); return; }
+  if (reason === 'Other' && !reasonOther) { showToast('Please specify the reason.', 'error'); return; }
+
+  const proceed = await showConfirmDialog({
+    title: 'End Tenure?',
+    message: `This archives all <strong>${allRecords.length}</strong> attendance record${allRecords.length !== 1 ? 's' : ''} for <strong>${escapeHtml(company)}</strong> and resets your Dashboard, Attendance, Overtime and Badges. You can undo this from the Companies page.`,
+    confirmLabel: 'End Tenure',
+    danger: true,
+  });
+  if (!proceed) return;
+
+  const pool = getOTPool(allRecords);
+  const stats = {
+    records:     allRecords.length,
+    presentDays: allRecords.filter(r => r.status === 'present').length,
+    absences:    allRecords.filter(r => r.status === 'absent').length,
+    holidays:    allRecords.filter(r => r.status === 'holiday').length,
+    leaveDays:   allRecords.filter(r => isLeaveUsage(r.otUsageType)).length,
+    otEarnedMins: pool.earned,
+    otUsedMins:   pool.used,
+    workMins:    allRecords.reduce((s, r) => s + (r.workMinutes || 0), 0),
+  };
+
+  const btn = g('btn-save-tenure');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  try {
+    const userRef = db.collection('users').doc(currentUser.uid);
+    const attCol  = userRef.collection('attendance');
+    const compRef = userRef.collection('companies').doc();
+
+    // Read the raw stored docs (not the recalculated view) so Undo restores them exactly
+    const snap = await attCol.get();
+
+    await compRef.set({
+      companyName: company,
+      jobTitle:    g('t-title').value.trim(),
+      employmentType: g('t-type').value,
+      workSetup:   g('t-setup').value,
+      location:    g('t-location').value.trim(),
+      startDate:   start || null,
+      endDate:     end,
+      reason, reasonOther: reason === 'Other' ? reasonOther : '',
+      description: g('t-description').value.trim(),
+      skills:      g('t-skills').value.split(',').map(x => x.trim()).filter(Boolean).slice(0, 20),
+      achievements: g('t-achievements').value.trim(),
+      rating:      tenureRating,
+      stats,
+      settingsSnapshot: { companyName: userSettings.companyName || '', jobPosition: userSettings.jobPosition || '' },
+      endedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Copy first, delete after — if anything fails midway the originals are still intact
+    const arch = compRef.collection('records');
+    await commitInChunks(snap.docs.map(d => b => b.set(arch.doc(d.id), d.data())));
+    await commitInChunks(snap.docs.map(d => b => b.delete(attCol.doc(d.id))));
+
+    // The job is over, so clear it as the "current" company
+    await userRef.collection('config').doc('settings').set({ companyName: '', jobPosition: '' }, { merge: true });
+    clearSettingsCache();
+    userSettings = await getUserSettings(currentUser.uid);
+
+    customWorkHours = {};
+    updateSidebarUser();
+    await ensureTodayRecord();
+    await loadRecords();
+    closeModal('tenure-modal');
+    showToast(`Tenure at ${company} ended — ${snap.size} records archived. Undo anytime in Companies.`, 'success');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save & End Tenure';
   }
 }

@@ -25,6 +25,7 @@
       <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
       <a class="nav-item active" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
       <a class="nav-item" href="badges.html"><span class="nav-icon"><i data-lucide="award"></i></span> Badges</a>
+      <a class="nav-item" href="companies.html"><span class="nav-icon"><i data-lucide="building-2"></i></span> Companies</a>
       <div class="nav-section-label">Account</div>
       <a class="nav-item" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
       <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
@@ -148,8 +149,10 @@
               <select class="form-control" id="s-ot-start-rule" onchange="handleOTRuleChange()" style="max-width:320px">
                 <option value="immediate">Immediately after work ends</option>
                 <option value="after-delay">After a delay (e.g. OT starts after 1 hr)</option>
+                <option value="none">None — my job/internship doesn't allow OT</option>
               </select>
               <div class="form-hint">When your company starts counting OT.</div>
+              <div class="form-hint hidden" id="ot-none-hint" style="color:var(--primary)">No overtime will be counted, even if you time out after your shift ends.</div>
             </div>
 
             <div id="ot-delay-block" class="hidden" style="background:var(--bg);border-radius:8px;padding:.85rem;border:1px solid var(--border);margin-top:.5rem">
@@ -166,6 +169,30 @@
                 </div>
               </div>
               <div style="margin-top:.65rem;padding:.55rem .75rem;background:var(--primary-light);border-radius:6px;border:1px solid #BFDBFE;font-size:.78rem;color:var(--primary)" id="ot-rule-preview"></div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top:1.25rem">
+            <div class="settings-section-title" style="font-size:.85rem;margin-bottom:.75rem"><i data-lucide="calendar-heart" class="icon"></i> Leaves</div>
+            <p class="text-sm" style="color:var(--text-light);margin-bottom:1rem">
+              Set your yearly leave credits. These are tracked separately from your OT hours.
+            </p>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Sick Leave (SL)</label>
+                <input class="form-control" type="number" id="s-leave-sl" min="0" max="365" step="1" value="0" style="max-width:110px"/>
+                <div class="form-hint">Days per year</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Vacation Leave (VL)</label>
+                <input class="form-control" type="number" id="s-leave-vl" min="0" max="365" step="1" value="0" style="max-width:110px"/>
+                <div class="form-hint">Days per year</div>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Birthday Leave (BL) — 1 per year</label>
+              <input class="form-control" type="date" id="s-birth-date" style="max-width:200px"/>
+              <div class="form-hint">Your birth date. Birthday Leave is limited to 1 day per year, but you can use it on any date you choose.</div>
             </div>
           </div>
 

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OT Tracker — Companies</title>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="OT Tracker"/>
+  <link rel="apple-touch-icon" href="OTracker-logo.png"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .co-item { display:flex; gap:.9rem; padding:1.1rem 0; border-bottom:1px solid var(--border); }
+    .co-item:last-child { border-bottom:none; }
+    .co-logo { flex:0 0 48px; width:48px; height:48px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:1rem; }
+    .co-main { flex:1; min-width:0; }
+    .co-title { font-weight:700; font-size:.95rem; color:var(--text); }
+    .co-sub, .co-meta { font-size:.8rem; color:var(--text-light); margin-top:.1rem; }
+    .co-chip { display:inline-block; font-size:.72rem; padding:.15rem .55rem; border-radius:999px; background:var(--bg); border:1px solid var(--border); margin:.35rem .3rem 0 0; color:var(--text); }
+    .co-stars { color:#F59E0B; letter-spacing:1px; font-size:.95rem; }
+    .co-desc { font-size:.84rem; margin-top:.55rem; color:var(--text); white-space:pre-wrap; word-break:break-word; }
+    .co-stats { display:flex; flex-wrap:wrap; gap:.4rem 1.1rem; margin-top:.65rem; font-size:.76rem; color:var(--text-light); }
+    .co-stats strong { color:var(--text); }
+    .co-actions { margin-top:.7rem; }
+  </style>
+</head>
+<body>
+<div id="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img class="logo-icon" src="OTracker-logo.png" alt="OTracker logo"/>
+      <div><div class="logo-text">OT Tracker</div><div class="logo-sub">Attendance Monitor</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a class="nav-item" href="dashboard.html"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Dashboard</a>
+      <a class="nav-item" href="attendance.html"><span class="nav-icon"><i data-lucide="calendar-check"></i></span> Attendance</a>
+      <a class="nav-item" href="overtime.html"><span class="nav-icon"><i data-lucide="clock"></i></span> Overtime</a>
+      <a class="nav-item" href="schedule.html"><span class="nav-icon"><i data-lucide="calendar-days"></i></span> Schedule</a>
+      <a class="nav-item" href="badges.html"><span class="nav-icon"><i data-lucide="award"></i></span> Badges</a>
+      <a class="nav-item active" href="companies.html"><span class="nav-icon"><i data-lucide="building-2"></i></span> Companies</a>
+      <div class="nav-section-label">Account</div>
+      <a class="nav-item" href="settings.html"><span class="nav-icon"><i data-lucide="settings"></i></span> Settings</a>
+      <button class="nav-item" id="btn-logout"><span class="nav-icon"><i data-lucide="log-out"></i></span> Sign Out</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card-sidebar">
+        <div class="user-avatar" id="sidebar-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-username">Loading…</div>
+          <div class="user-dept" id="sidebar-dept">—</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop"></div>
+  <main class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <button id="sidebar-toggle" aria-label="Menu"><i data-lucide="menu" class="icon"></i></button>
+        <span class="page-title">Companies</span>
+      </div>
+      <div class="topbar-right">
+        <div class="notif-bell-wrap">
+          <button class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
+            <i data-lucide="bell" class="icon"></i><span class="notif-dot hidden" id="notif-dot"></span>
+          </button>
+          <!-- Notification Dropdown (Facebook-style) -->
+          <div class="notif-dropdown hidden" id="notif-dropdown">
+            <div class="notif-dropdown-header">
+              <span class="notif-dropdown-title">Notifications</span>
+              <button class="notif-clear-all btn btn-ghost btn-sm" onclick="clearAllNotifications()">Clear all</button>
+            </div>
+            <div class="notif-dropdown-list"></div>
+          </div>
+        </div>
+        <div class="live-clock-wrap">
+          <div class="live-clock-time" id="clock-time">—</div>
+          <div class="live-clock-date" id="clock-date">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div class="card">
+        <div class="card-body">
+          <div class="settings-section-title"><i data-lucide="building-2" class="icon"></i> Companies</div>
+          <p class="text-sm" style="color:var(--text-light);margin-bottom:1.25rem">
+            Your work history. End a job from the <strong>+</strong> button on the Dashboard (Tenure Ended) and it is saved here.
+          </p>
+          <div id="companies-list"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="utils.js"></script>
+<script src="notifications.js"></script>
+<script src="companies.js"></script>
+<script src="chatbot.js"></script>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
+</script>
+<script>if (window.lucide) lucide.createIcons();</script>
+</body>
+</html>
